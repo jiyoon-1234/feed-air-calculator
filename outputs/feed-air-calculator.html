@@ -1,0 +1,1171 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Feed 이론공기량 계산기</title>
+  <style>
+    :root {
+      --bg: #f5f7f5;
+      --paper: #ffffff;
+      --ink: #1f2824;
+      --muted: #66736c;
+      --line: #cfd8d3;
+      --head: #d8edf3;
+      --accent: #176b63;
+      --accent-2: #b74f2f;
+      --warn: #a75d00;
+      --ok: #16784f;
+      --danger: #b42424;
+      --shadow: 0 10px 28px rgba(21, 42, 34, 0.08);
+      font-family: "Segoe UI", "Malgun Gothic", Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-size: 14px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 16px;
+      align-items: end;
+      padding: 22px 24px 18px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfb;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .sub {
+      margin-top: 7px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    main {
+      padding: 18px 24px 28px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .topbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    button, .file-label {
+      border: 1px solid var(--line);
+      background: var(--paper);
+      color: var(--ink);
+      height: 36px;
+      padding: 0 12px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    svg.icon {
+      width: 16px;
+      height: 16px;
+      flex: 0 0 16px;
+      stroke-width: 2;
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    button.warn {
+      color: #fff;
+      background: var(--accent-2);
+      border-color: var(--accent-2);
+    }
+
+    button.icon-only {
+      width: 34px;
+      padding: 0;
+      justify-content: center;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    input[type="file"] { display: none; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(280px, 380px) 1fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel h2 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.2;
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfb;
+    }
+
+    .panel-body {
+      padding: 14px;
+      display: grid;
+      gap: 13px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-weight: 650;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      min-height: 34px;
+      padding: 7px 9px;
+      font: inherit;
+    }
+
+    textarea {
+      min-height: 138px;
+      resize: vertical;
+      font-family: Consolas, "Malgun Gothic", monospace;
+      line-height: 1.4;
+    }
+
+    .two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .stream-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .stream-row {
+      display: grid;
+      grid-template-columns: 1fr 105px;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .notice {
+      padding: 10px 12px;
+      border-radius: 6px;
+      background: #fff7e6;
+      border: 1px solid #ecd1a0;
+      color: #634100;
+      line-height: 1.45;
+    }
+
+    .notice.ok {
+      background: #eaf6f0;
+      border-color: #b9dccb;
+      color: #12583d;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(160px, 1fr));
+      gap: 10px;
+    }
+
+    .metric {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 78px;
+      box-shadow: var(--shadow);
+    }
+
+    .metric .k {
+      color: var(--muted);
+      font-weight: 650;
+      font-size: 12px;
+    }
+
+    .metric .v {
+      margin-top: 7px;
+      font-size: 20px;
+      line-height: 1.15;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      max-height: 62vh;
+      border: 1px solid var(--line);
+      background: var(--paper);
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      min-width: 960px;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 0;
+      text-align: center;
+      vertical-align: middle;
+      height: 36px;
+    }
+
+    th {
+      background: var(--head);
+      font-size: 13px;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    td input {
+      border: 0;
+      border-radius: 0;
+      min-height: 35px;
+      text-align: center;
+      background: transparent;
+    }
+
+    td input:focus {
+      outline: 2px solid rgba(23, 107, 99, 0.25);
+      background: #fff;
+    }
+
+    .readonly {
+      background: #f8faf8;
+      color: var(--muted);
+      padding: 8px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .row-actions {
+      display: flex;
+      justify-content: center;
+      gap: 5px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 6px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfb;
+      padding: 8px 8px 0;
+    }
+
+    .tab {
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+      border-bottom-color: transparent;
+      height: 34px;
+    }
+
+    .tab.active {
+      color: #fff;
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    .results-table th, .results-table td { padding: 8px 9px; }
+    .results-table td { font-variant-numeric: tabular-nums; }
+    .left { text-align: left; }
+    .right { text-align: right; }
+    .bad { color: var(--danger); font-weight: 750; }
+    .good { color: var(--ok); font-weight: 750; }
+
+    .formula-note {
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: 13px;
+    }
+
+    @media (max-width: 980px) {
+      header { grid-template-columns: 1fr; align-items: start; }
+      .topbar { justify-content: flex-start; }
+      .grid { grid-template-columns: 1fr; }
+      .summary { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+    }
+
+    @media (max-width: 560px) {
+      header, main { padding-left: 12px; padding-right: 12px; }
+      .two { grid-template-columns: 1fr; }
+      .summary { grid-template-columns: 1fr; }
+      button, .file-label { width: 100%; justify-content: center; }
+      .topbar { display: grid; grid-template-columns: 1fr 1fr; }
+      h1 { font-size: 21px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Feed 이론공기량 계산기</h1>
+      <div class="sub">Excel, CSV, 텍스트 PDF 표를 불러와 성분별 화학식으로 산소 요구량과 이론공기량을 계산합니다.</div>
+    </div>
+    <div class="topbar">
+      <label class="file-label" title="Excel, CSV, PDF 파일 업로드">
+        <i data-lucide="upload" aria-hidden="true"></i>
+        파일 업로드
+        <input id="fileInput" type="file" accept=".xlsx,.xls,.csv,.pdf" />
+      </label>
+      <button id="sampleBtn" type="button" title="첨부 예시 데이터 입력"><i data-lucide="table"></i>예시 입력</button>
+      <button id="calcBtn" class="primary" type="button" title="계산 실행"><i data-lucide="calculator"></i>계산</button>
+      <button id="exportBtn" type="button" title="결과 CSV 저장"><i data-lucide="download"></i>CSV 저장</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="summary" aria-label="계산 요약">
+      <div class="metric">
+        <div class="k">Net O2</div>
+        <div id="metricO2" class="v">0 kmol/h</div>
+      </div>
+      <div class="metric">
+        <div class="k">이론공기량</div>
+        <div id="metricAirNm3" class="v">0 Nm3/h</div>
+      </div>
+      <div class="metric">
+        <div class="k">이론공기 질량</div>
+        <div id="metricAirKg" class="v">0 kg/h</div>
+      </div>
+      <div class="metric">
+        <div class="k">인식된 Feed 열</div>
+        <div id="metricStreams" class="v">0</div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <aside class="panel">
+        <h2>입력 설정</h2>
+        <div class="panel-body">
+          <div id="status" class="notice ok">예시 입력을 누르거나 파일을 업로드하세요.</div>
+          <div class="two">
+            <label>공기 중 O2 몰분율
+              <input id="oxygenFraction" type="number" step="0.001" min="0.01" max="1" value="0.21" />
+            </label>
+            <label>Nm3 환산
+              <input id="molarVolume" type="number" step="0.001" min="1" value="22.414" />
+            </label>
+          </div>
+          <div>
+            <label>Feed 열 단위</label>
+            <div id="streamUnits" class="stream-list"></div>
+          </div>
+          <label>표 붙여넣기
+            <textarea id="pasteBox" placeholder="Excel 범위를 복사해 붙여넣거나, PDF에서 복사한 표 텍스트를 붙여넣으세요."></textarea>
+          </label>
+          <div class="two">
+            <button id="pasteBtn" type="button" title="붙여넣은 표 읽기"><i data-lucide="clipboard-paste"></i>붙여넣기 읽기</button>
+            <button id="addStreamBtn" type="button" title="Feed 열 추가"><i data-lucide="columns-3"></i>Feed 열 추가</button>
+          </div>
+          <button id="addRowBtn" type="button" title="성분 행 추가"><i data-lucide="plus"></i>성분 추가</button>
+          <div class="formula-note">
+            MW가 비어 있거나 열이 없으면 화학식의 원자량 합으로 자동 계산합니다. 기본 산소계수: C + H/4 + S - O/2 - F/4 - Cl/4 - Br/4 - I/4. O2는 -1, N2/Cl2는 0으로 처리합니다. 특수 반응은 O2 계수 칸을 직접 수정하세요.
+          </div>
+        </div>
+      </aside>
+
+      <section class="panel">
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-view="inputView" type="button"><i data-lucide="grid-3x3"></i>입력표</button>
+          <button class="tab" data-view="resultView" type="button"><i data-lucide="bar-chart-3"></i>결과</button>
+          <button class="tab" data-view="equationView" type="button"><i data-lucide="sigma"></i>반응식</button>
+        </div>
+        <div id="inputView" class="view active">
+          <div class="table-wrap">
+            <table id="inputTable" aria-label="Feed 입력표"></table>
+          </div>
+        </div>
+        <div id="resultView" class="view">
+          <div class="table-wrap">
+            <table id="resultTable" class="results-table" aria-label="계산 결과표"></table>
+          </div>
+        </div>
+        <div id="equationView" class="view">
+          <div class="table-wrap">
+            <table id="equationTable" class="results-table" aria-label="화학반응식 표"></table>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      streams: ["VG #1", "VG #2", "WL", "NG"],
+      units: {},
+      rows: []
+    };
+
+    const sampleRows = [
+      ["H2O", "H2O", 18.02, 0, "", "", "", ""],
+      ["CO2", "CO2", 44.00, 0, "", "", "", ""],
+      ["O2", "O2", 32.00, -1, "", 4.4, "", ""],
+      ["N2", "N2", 28.01, 0, "", 14.6, "", 0.9],
+      ["CH4", "CH4", 16.04, 2, "", "", "", 234.636],
+      ["C2H6", "C2H6", 30.07, 3.5, "", "", "", 27.1],
+      ["C3H8", "C3H8", 44.10, 5, "", "", "", 15.1597],
+      ["C4H10", "C4H10", 58.12, 6.5, "", "", "", 9.244],
+      ["NaOH", "NaOH", 40.00, 0, "", "", "", ""],
+      ["Na2SO3", "Na2SO3", 126.00, -0.5, "", "", "", ""],
+      ["C8H10", "C8H10", 106.16, 10.5, 0.02, 0.01, "", ""],
+      ["Cl2", "Cl2", 71.00, 0, 3.7, 0.04, "", ""],
+      ["HCl", "HCl", 36.50, 0, 2186.4, 1.7, 0.0001, ""],
+      ["HCPX", "C8H4Cl6", 312.83, 8, 0.01, "", "", ""],
+      ["TPA", "C8H6O4", 166.13, 7.5, "", "", 13, ""],
+      ["TPC", "C8H4Cl2O2", 203.02, 8, 0.21, 0.01, 57.7, ""],
+      ["XY-8Cl", "C8H2Cl8", 381.72, 6.5, "", "", 6.3, ""],
+      ["BC-2Cl", "C7H3OCl3", 209.46, 6.75, "", 0.002, 0.02, ""],
+      ["BC-BZ2Cl", "C8H5OCl3", 223.48, 8, "", "", 1.8, ""],
+      ["TPC-Cl", "C8H3Cl3O2", 237.47, 7.25, "", "", 51.4, ""],
+      ["TPC-2Cl", "C8H2Cl4O2", 271.90, 6.5, "", "", 6.6, ""],
+      ["BC-5CL", "C7H1OCl6", 313.80, 5, "", "", 2.3, ""],
+      ["TMC", "C8H5O3Cl", 184.58, 7, "", "", 11, ""],
+      ["DMF", "C3H7NO", 73.09, 4.25, 0.7, 0.26, 0.02, ""]
+    ];
+
+    function defaultUnits() {
+      state.streams.forEach(name => {
+        if (!state.units[name]) state.units[name] = "kg/h";
+      });
+    }
+
+    function cleanFormula(value) {
+      return String(value || "")
+        .replace(/[₀₁₂₃₄₅₆₇₈₉]/g, ch => "₀₁₂₃₄₅₆₇₈₉".indexOf(ch))
+        .replace(/\s+/g, "")
+        .replace(/[·∙]/g, ".");
+    }
+
+    function formulaFromName(value) {
+      const raw = String(value || "").trim();
+      const key = raw.toLowerCase().replace(/\s+/g, " ");
+      const aliases = {
+        water: "H2O",
+        "h2o": "H2O",
+        "sulfur": "S",
+        "sulphur": "S",
+        "sulfur vapor (sx)": "S",
+        "sulphur vapor (sx)": "S",
+        "sulfur liquid": "S",
+        "sulphur liquid": "S"
+      };
+      if (aliases[key]) return aliases[key];
+      const parenthetical = raw.match(/\(([A-Z][A-Za-z0-9]*)\)/);
+      if (parenthetical && looksLikeFormula(parenthetical[1].replace(/x$/i, ""))) {
+        return parenthetical[1].replace(/x$/i, "");
+      }
+      return looksLikeFormula(raw) ? cleanFormula(raw) : "";
+    }
+
+    function isNumeric(value) {
+      if (value === null || value === undefined || value === "") return false;
+      return Number.isFinite(Number(String(value).replace(/,/g, "")));
+    }
+
+    function toNumber(value) {
+      if (value === null || value === undefined || value === "") return 0;
+      const n = Number(String(value).replace(/,/g, "").trim());
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function looksLikeFormula(value) {
+      const s = cleanFormula(value);
+      if (!s) return false;
+      let pos = 0;
+      let foundElement = false;
+      while (pos < s.length) {
+        if (s[pos] === "(" || s[pos] === ")") {
+          pos++;
+          const number = s.slice(pos).match(/^\d+(?:\.\d+)?/);
+          if (number) pos += number[0].length;
+          continue;
+        }
+        const match = s.slice(pos).match(/^([A-Z][a-z]?)(\d*(?:\.\d+)?)?/);
+        if (!match || !atomicWeights[match[1]]) return false;
+        foundElement = true;
+        pos += match[0].length || match[1].length;
+      }
+      return foundElement;
+    }
+
+    function parseFormula(formula) {
+      const input = cleanFormula(formula);
+      let pos = 0;
+
+      function parseGroup() {
+        const counts = {};
+        while (pos < input.length) {
+          const ch = input[pos];
+          if (ch === ")") break;
+          if (ch === "(") {
+            pos++;
+            const inner = parseGroup();
+            if (input[pos] === ")") pos++;
+            const mult = readNumber() || 1;
+            Object.keys(inner).forEach(el => counts[el] = (counts[el] || 0) + inner[el] * mult);
+            continue;
+          }
+          const match = input.slice(pos).match(/^([A-Z][a-z]?)/);
+          if (!match) {
+            pos++;
+            continue;
+          }
+          const el = match[1];
+          pos += el.length;
+          const num = readNumber() || 1;
+          counts[el] = (counts[el] || 0) + num;
+        }
+        return counts;
+      }
+
+      function readNumber() {
+        const match = input.slice(pos).match(/^(\d+(?:\.\d+)?)/);
+        if (!match) return null;
+        pos += match[1].length;
+        return Number(match[1]);
+      }
+
+      return parseGroup();
+    }
+
+    function o2CoeffFromFormula(formula) {
+      const s = cleanFormula(formula);
+      if (!s) return 0;
+      if (["N2", "Cl2", "F2", "Br2", "I2", "Ar", "He", "Ne", "CO2", "H2O", "HCl", "HF", "HBr", "HI"].includes(s)) return s === "O2" ? -1 : 0;
+      if (s === "O2") return -1;
+      const c = parseFormula(s);
+      const halogen = (c.F || 0) + (c.Cl || 0) + (c.Br || 0) + (c.I || 0);
+      const coeff = (c.C || 0) + (c.H || 0) / 4 + (c.S || 0) - (c.O || 0) / 2 - halogen / 4;
+      return round(coeff, 6);
+    }
+
+    function equationFor(row) {
+      const formula = cleanFormula(row.formula);
+      if (!formula || row.o2Coeff === 0) return "";
+      const c = parseFormula(formula);
+      const parts = [];
+      if (c.C) parts.push(formatCoeff(c.C) + "CO2");
+      if (c.H) {
+        const water = c.H / 2;
+        const halogen = (c.F || 0) + (c.Cl || 0) + (c.Br || 0) + (c.I || 0);
+        const acidH = Math.min(c.H || 0, halogen);
+        const waterFromH = Math.max((c.H - acidH) / 2, 0);
+        parts.length = c.C ? 1 : 0;
+        if (waterFromH) parts.push(formatCoeff(waterFromH) + "H2O");
+      }
+      if (c.S) parts.push(formatCoeff(c.S) + "SO2");
+      if (c.N) parts.push(formatCoeff(c.N / 2) + "N2");
+      [["F", "HF"], ["Cl", "HCl"], ["Br", "HBr"], ["I", "HI"]].forEach(([el, product]) => {
+        if (c[el]) parts.push(formatCoeff(c[el]) + product);
+      });
+      return `${formula} + ${formatCoeff(row.o2Coeff)}O2 -> ${parts.join(" + ") || "products"}`;
+    }
+
+    function formatCoeff(value) {
+      if (Math.abs(value - 1) < 1e-9) return "";
+      return round(value, 4);
+    }
+
+    function round(value, digits = 3) {
+      const p = Math.pow(10, digits);
+      return Math.round((Number(value) + Number.EPSILON) * p) / p;
+    }
+
+    function fmt(value, digits = 3) {
+      if (!Number.isFinite(value)) return "";
+      const abs = Math.abs(value);
+      const d = abs >= 1000 ? 1 : abs >= 100 ? 2 : digits;
+      return value.toLocaleString("ko-KR", { maximumFractionDigits: d });
+    }
+
+    function normalizeRows(matrix) {
+      const rows = matrix
+        .map(row => row.map(cell => String(cell ?? "").trim()))
+        .filter(row => row.some(Boolean));
+      if (!rows.length) return;
+
+      if (normalizeStreamCompositionRows(rows)) return;
+
+      let headerIndex = rows.findIndex(row => row.some(cell => /component|성분|formula|화학식/i.test(cell)));
+      if (headerIndex < 0) headerIndex = 0;
+      const header = rows[headerIndex];
+      const componentIndex = Math.max(header.findIndex(cell => /component|성분/i.test(cell)), 0);
+      const mwIndex = header.findIndex(cell => /^mw$|분자량|molecular\s*weight/i.test(cell));
+      const formulaIndex = header.findIndex(cell => /formula|화학식/i.test(cell));
+      const inferredFormulaIndex = formulaIndex >= 0
+        ? formulaIndex
+        : (mwIndex > componentIndex + 1 ? componentIndex + 1 : -1);
+      const metaIndexes = new Set([componentIndex, inferredFormulaIndex, mwIndex].filter(index => index >= 0));
+      const streamColumns = header
+        .map((name, index) => ({ name: name || `Feed #${index + 1}`, index }))
+        .filter(col => !metaIndexes.has(col.index));
+      const streamNames = streamColumns.map(col => col.name).filter(Boolean);
+      state.streams = streamNames.length ? streamNames : ["Feed #1"];
+      const activeStreamColumns = streamColumns.length ? streamColumns : [{ name: "Feed #1", index: 1 }];
+      defaultUnits();
+
+      const parsed = [];
+      for (const row of rows.slice(headerIndex + 1)) {
+        if (/total|합계/i.test(row.join(" "))) continue;
+        const first = row[componentIndex] || row[0] || "";
+        if (!first) continue;
+
+        let component = first;
+        let formula = inferredFormulaIndex >= 0 ? row[inferredFormulaIndex] : "";
+        let mw = mwIndex >= 0 ? toNumber(row[mwIndex]) : 0;
+
+        if (!looksLikeFormula(formula)) {
+          if (looksLikeFormula(first)) {
+            formula = first;
+          } else {
+            const formulaCandidate = row.find((cell, index) => !metaIndexes.has(index) && looksLikeFormula(cell));
+            if (formulaCandidate) formula = formulaCandidate;
+          }
+        }
+        if (!looksLikeFormula(formula)) formula = formulaFromName(first);
+
+        if (!mw) mw = molecularWeightFromFormula(formula);
+        const values = {};
+        activeStreamColumns.forEach(col => values[col.name] = toNumber(row[col.index]));
+        parsed.push({
+          id: crypto.randomUUID(),
+          component,
+          formula: cleanFormula(formula),
+          mw: round(mw, 4),
+          o2Coeff: o2CoeffFromFormula(formula),
+          values
+        });
+      }
+      if (parsed.length) {
+        state.rows = parsed;
+        renderAll();
+        setStatus(`${parsed.length}개 성분과 ${state.streams.length}개 Feed 열을 읽었습니다.`, "ok");
+      } else {
+        setStatus("표를 읽었지만 성분 행을 찾지 못했습니다. 헤더에 Component 또는 Formula가 있는지 확인하세요.", "warn");
+      }
+    }
+
+    function normalizeStreamCompositionRows(rows) {
+      const markerIndex = rows.findIndex(row => row.some(cell => /component\s*\(\s*mole\s*%\s*\)|component\s*mole\s*%|성분.*mol/i.test(cell)));
+      if (markerIndex < 0) return false;
+
+      const markerRow = rows[markerIndex];
+      const componentCol = markerRow.findIndex(cell => /component|성분/i.test(cell));
+      const startCol = componentCol >= 0 ? componentCol + 1 : 1;
+      const massRow = rows.find(row => row.some(cell => /mass\s*flow\s*rate|mass\s*flowrate|mass\s*flow|total.*flow|total.*유량|총.*유량|전체.*유량/i.test(cell)));
+      const mwRow = rows.find(row => row.some(cell => /molecular\s*weight|^mw$|분자량/i.test(cell)));
+
+      if (!massRow || !mwRow) return false;
+
+      const streamColumns = [];
+      for (let col = startCol; col < Math.max(...rows.map(row => row.length)); col++) {
+        const mass = toNumber(massRow[col]);
+        const streamMw = toNumber(mwRow[col]);
+        if (!mass || !streamMw) continue;
+        const streamName = findStreamName(rows, markerIndex, col) || `Feed #${streamColumns.length + 1}`;
+        streamColumns.push({ name: streamName, col, mass, mw: streamMw, totalKmol: mass / streamMw });
+      }
+
+      if (!streamColumns.length) return false;
+
+      state.streams = streamColumns.map(col => col.name);
+      state.units = {};
+      state.streams.forEach(name => state.units[name] = "kmol/h");
+
+      const parsed = [];
+      for (const row of rows.slice(markerIndex + 1)) {
+        const component = row[componentCol] || row.find(Boolean) || "";
+        if (!component || /total|합계|parameters|units/i.test(component)) continue;
+        const hasComposition = streamColumns.some(stream => isNumeric(row[stream.col]) && toNumber(row[stream.col]) !== 0);
+        if (!hasComposition && !streamColumns.some(stream => isNumeric(row[stream.col]))) break;
+        const formula = formulaFromName(component);
+        const mw = molecularWeightFromFormula(formula);
+        const values = {};
+        streamColumns.forEach(stream => {
+          const molePercent = toNumber(row[stream.col]);
+          values[stream.name] = round(stream.totalKmol * molePercent / 100, 6);
+        });
+        parsed.push({
+          id: crypto.randomUUID(),
+          component,
+          formula: formula || component,
+          mw: round(mw, 4),
+          o2Coeff: o2CoeffFromFormula(formula),
+          values
+        });
+      }
+
+      if (!parsed.length) return false;
+      state.rows = parsed;
+      renderAll();
+      setStatus(`${parsed.length}개 성분을 mole%와 Total 유량으로 kmol/h 변환했습니다.`, "ok");
+      return true;
+    }
+
+    function findStreamName(rows, markerIndex, col) {
+      for (let r = markerIndex - 1; r >= Math.max(0, markerIndex - 8); r--) {
+        const value = String(rows[r][col] || "").trim();
+        if (!value) continue;
+        if (/^\d+(?:\.\d+)?$/.test(value)) continue;
+        if (/℃|bar|kg\/h|kg\/kmol|m3\/h/i.test(value)) continue;
+        if (/temperature|pressure|mass|molecular|actual|parameters|units/i.test(value)) continue;
+        return value;
+      }
+      return "";
+    }
+
+    const atomicWeights = {
+      H: 1.008, C: 12.011, N: 14.007, O: 15.999, S: 32.06, F: 18.998,
+      Cl: 35.45, Br: 79.904, I: 126.904, Na: 22.990, K: 39.098, Ca: 40.078,
+      Mg: 24.305, P: 30.974, Si: 28.085, Al: 26.982, Fe: 55.845
+    };
+
+    function molecularWeightFromFormula(formula) {
+      const counts = parseFormula(formula);
+      return Object.entries(counts).reduce((sum, [el, count]) => sum + (atomicWeights[el] || 0) * count, 0);
+    }
+
+    function renderAll() {
+      defaultUnits();
+      renderStreamUnits();
+      renderInputTable();
+      calculate();
+      renderIcons();
+    }
+
+    function renderIcons() {
+      const icons = {
+        upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>',
+        table: '<path d="M3 3h18v18H3z"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/>',
+        calculator: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8"/><path d="M8 10h.01"/><path d="M12 10h.01"/><path d="M16 10h.01"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>',
+        download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>',
+        "clipboard-paste": '<path d="M8 4h8a2 2 0 0 1 2 2v2"/><path d="M8 4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4"/><path d="M9 2h6v4H9z"/><path d="M16 13h5"/><path d="M19 10l3 3-3 3"/><path d="M15 17h2"/>',
+        "columns-3": '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/>',
+        plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
+        "grid-3x3": '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/>',
+        "bar-chart-3": '<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
+        sigma: '<path d="M18 7V4H6l6 8-6 8h12v-3"/>',
+        "refresh-cw": '<path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12A9 9 0 0 1 18.5 5.8"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/>',
+        "trash-2": '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>'
+      };
+      document.querySelectorAll("i[data-lucide]").forEach(node => {
+        const name = node.getAttribute("data-lucide");
+        if (!icons[name]) return;
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("class", "icon");
+        svg.setAttribute("viewBox", "0 0 24 24");
+        svg.setAttribute("fill", "none");
+        svg.setAttribute("stroke", "currentColor");
+        svg.setAttribute("stroke-linecap", "round");
+        svg.setAttribute("stroke-linejoin", "round");
+        svg.setAttribute("aria-hidden", "true");
+        svg.innerHTML = icons[name];
+        node.replaceWith(svg);
+      });
+    }
+
+    function renderStreamUnits() {
+      const root = document.getElementById("streamUnits");
+      root.innerHTML = "";
+      state.streams.forEach((name, index) => {
+        const row = document.createElement("div");
+        row.className = "stream-row";
+        row.innerHTML = `
+          <input value="${escapeHtml(name)}" data-stream-name="${index}" aria-label="Feed 열 이름">
+          <select data-stream-unit="${escapeHtml(name)}" aria-label="${escapeHtml(name)} 단위">
+            <option value="kg/h">kg/h</option>
+            <option value="kmol/h">kmol/h</option>
+            <option value="Nm3/h">Nm3/h</option>
+          </select>
+        `;
+        root.appendChild(row);
+        row.querySelector("select").value = state.units[name] || "kg/h";
+      });
+    }
+
+    function renderInputTable() {
+      const table = document.getElementById("inputTable");
+      table.innerHTML = "";
+      const thead = document.createElement("thead");
+      thead.innerHTML = `
+        <tr>
+          <th>성분명</th>
+          <th>화학식</th>
+          <th>MW</th>
+          <th>O2 계수</th>
+          ${state.streams.map(s => `<th>${escapeHtml(s)}</th>`).join("")}
+          <th>작업</th>
+        </tr>
+      `;
+      table.appendChild(thead);
+      const tbody = document.createElement("tbody");
+      state.rows.forEach((row, rowIndex) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><input value="${escapeHtml(row.component)}" data-row="${rowIndex}" data-field="component"></td>
+          <td><input value="${escapeHtml(row.formula)}" data-row="${rowIndex}" data-field="formula"></td>
+          <td><input value="${row.mw || ""}" data-row="${rowIndex}" data-field="mw" inputmode="decimal"></td>
+          <td><input value="${row.o2Coeff ?? 0}" data-row="${rowIndex}" data-field="o2Coeff" inputmode="decimal"></td>
+          ${state.streams.map(s => `<td><input value="${row.values[s] || ""}" data-row="${rowIndex}" data-stream="${escapeHtml(s)}" inputmode="decimal"></td>`).join("")}
+          <td><div class="row-actions">
+            <button class="icon-only" type="button" data-recalc="${rowIndex}" title="화학식으로 MW/O2 재계산"><i data-lucide="refresh-cw"></i></button>
+            <button class="icon-only" type="button" data-delete="${rowIndex}" title="행 삭제"><i data-lucide="trash-2"></i></button>
+          </div></td>
+        `;
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+    }
+
+    function calculate() {
+      const oxygenFraction = toNumber(document.getElementById("oxygenFraction").value) || 0.21;
+      const molarVolume = toNumber(document.getElementById("molarVolume").value) || 22.414;
+      const airMw = oxygenFraction * 32 + (1 - oxygenFraction) * 28.01;
+      const byStream = {};
+      let totalO2 = 0;
+
+      state.streams.forEach(stream => {
+        byStream[stream] = { o2: 0, airKmol: 0, airNm3: 0, airKg: 0 };
+      });
+
+      const rowResults = [];
+      state.rows.forEach(row => {
+        state.streams.forEach(stream => {
+          const qty = toNumber(row.values[stream]);
+          const unit = state.units[stream] || "kg/h";
+          let kmol = 0;
+          if (unit === "kg/h") kmol = row.mw ? qty / row.mw : 0;
+          if (unit === "kmol/h") kmol = qty;
+          if (unit === "Nm3/h") kmol = qty / molarVolume;
+          const o2 = kmol * toNumber(row.o2Coeff);
+          byStream[stream].o2 += o2;
+          rowResults.push({
+            component: row.component,
+            formula: row.formula,
+            stream,
+            qty,
+            unit,
+            kmol,
+            o2
+          });
+        });
+      });
+
+      Object.values(byStream).forEach(v => {
+        v.airKmol = Math.max(v.o2, 0) / oxygenFraction;
+        v.airNm3 = v.airKmol * molarVolume;
+        v.airKg = v.airKmol * airMw;
+        totalO2 += v.o2;
+      });
+
+      const totalAirKmol = Math.max(totalO2, 0) / oxygenFraction;
+      const totalAirNm3 = totalAirKmol * molarVolume;
+      const totalAirKg = totalAirKmol * airMw;
+
+      document.getElementById("metricO2").textContent = `${fmt(totalO2)} kmol/h`;
+      document.getElementById("metricAirNm3").textContent = `${fmt(totalAirNm3)} Nm3/h`;
+      document.getElementById("metricAirKg").textContent = `${fmt(totalAirKg)} kg/h`;
+      document.getElementById("metricStreams").textContent = state.streams.length;
+      renderResultTable(byStream, totalO2, totalAirKmol, totalAirNm3, totalAirKg);
+      renderEquationTable(rowResults);
+      return { byStream, totalO2, totalAirKmol, totalAirNm3, totalAirKg, rowResults };
+    }
+
+    function renderResultTable(byStream, totalO2, totalAirKmol, totalAirNm3, totalAirKg) {
+      const table = document.getElementById("resultTable");
+      table.innerHTML = `
+        <thead>
+          <tr>
+            <th>Feed</th>
+            <th>단위</th>
+            <th>O2 요구량 kmol/h</th>
+            <th>공기 kmol/h</th>
+            <th>공기 Nm3/h</th>
+            <th>공기 kg/h</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${state.streams.map(stream => `
+            <tr>
+              <td class="left">${escapeHtml(stream)}</td>
+              <td>${escapeHtml(state.units[stream] || "kg/h")}</td>
+              <td class="right ${byStream[stream].o2 < 0 ? "bad" : "good"}">${fmt(byStream[stream].o2)}</td>
+              <td class="right">${fmt(byStream[stream].airKmol)}</td>
+              <td class="right">${fmt(byStream[stream].airNm3)}</td>
+              <td class="right">${fmt(byStream[stream].airKg)}</td>
+            </tr>
+          `).join("")}
+          <tr>
+            <th class="left">Total</th>
+            <th></th>
+            <th class="right">${fmt(totalO2)}</th>
+            <th class="right">${fmt(totalAirKmol)}</th>
+            <th class="right">${fmt(totalAirNm3)}</th>
+            <th class="right">${fmt(totalAirKg)}</th>
+          </tr>
+        </tbody>
+      `;
+    }
+
+    function renderEquationTable(rowResults) {
+      const grouped = state.rows.map(row => {
+        const o2 = rowResults
+          .filter(r => r.component === row.component && r.formula === row.formula)
+          .reduce((sum, r) => sum + r.o2, 0);
+        return { row, o2 };
+      }).filter(item => item.row.formula);
+
+      document.getElementById("equationTable").innerHTML = `
+        <thead>
+          <tr>
+            <th>성분</th>
+            <th>화학식</th>
+            <th>O2 계수 mol/mol</th>
+            <th>반응식</th>
+            <th>Total O2 kmol/h</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${grouped.map(({ row, o2 }) => `
+            <tr>
+              <td class="left">${escapeHtml(row.component)}</td>
+              <td>${escapeHtml(row.formula)}</td>
+              <td class="right">${fmt(toNumber(row.o2Coeff), 4)}</td>
+              <td class="left">${escapeHtml(equationFor(row))}</td>
+              <td class="right">${fmt(o2)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      `;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, ch => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      })[ch]);
+    }
+
+    function setStatus(message, type = "ok") {
+      const el = document.getElementById("status");
+      el.textContent = message;
+      el.className = type === "ok" ? "notice ok" : "notice";
+    }
+
+    function readPaste() {
+      const text = document.getElementById("pasteBox").value.trim();
+      if (!text) return setStatus("붙여넣은 표가 비어 있습니다.", "warn");
+      const rows = text.split(/\r?\n/).map(line => {
+        if (line.includes("\t")) return line.split("\t");
+        if (line.includes(",")) return line.split(",");
+        return line.trim().split(/\s{2,}/);
+      });
+      normalizeRows(rows);
+    }
+
+    async function handleFile(file) {
+      if (!file) return;
+      try {
+        if (location.protocol === "file:") {
+          setStatus("파일 업로드 자동 인식은 로컬 서버 실행 후 사용할 수 있습니다. python outputs/feed_air_server.py를 실행하세요.", "warn");
+          return;
+        }
+        const form = new FormData();
+        form.append("file", file);
+        const response = await fetch("/api/parse", { method: "POST", body: form });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) throw new Error(payload.error || "parse failed");
+        normalizeRows(payload.rows);
+      } catch (err) {
+        console.error(err);
+        setStatus("파일을 읽지 못했습니다. PDF가 스캔 이미지라면 OCR 변환 후 사용하거나 표 붙여넣기를 사용하세요.", "warn");
+      }
+    }
+
+    function loadSample() {
+      state.streams = ["VG #1", "VG #2", "WL", "NG"];
+      state.units = { "VG #1": "kg/h", "VG #2": "kg/h", "WL": "kg/h", "NG": "kg/h" };
+      state.rows = sampleRows.map(row => ({
+        id: crypto.randomUUID(),
+        component: row[0],
+        formula: row[1],
+        mw: row[2],
+        o2Coeff: row[3],
+        values: {
+          "VG #1": row[4],
+          "VG #2": row[5],
+          "WL": row[6],
+          "NG": row[7]
+        }
+      }));
+      renderAll();
+      setStatus("첨부 이미지의 예시 데이터를 입력했습니다. Feed별 단위를 확인한 뒤 계산 결과를 보세요.", "ok");
+    }
+
+    function addRow() {
+      const values = {};
+      state.streams.forEach(s => values[s] = "");
+      state.rows.push({ id: crypto.randomUUID(), component: "", formula: "", mw: "", o2Coeff: 0, values });
+      renderAll();
+    }
+
+    function addStream() {
+      const name = `Feed #${state.streams.length + 1}`;
+      state.streams.push(name);
+      state.units[name] = "kg/h";
+      state.rows.forEach(row => row.values[name] = "");
+      renderAll();
+    }
+
+    function exportCsv() {
+      const result = calculate();
+      const lines = [
+        ["Feed", "Unit", "O2 kmol/h", "Air kmol/h", "Air Nm3/h", "Air kg/h"],
+        ...state.streams.map(stream => [
+          stream,
+          state.units[stream],
+          result.byStream[stream].o2,
+          result.byStream[stream].airKmol,
+          result.byStream[stream].airNm3,
+          result.byStream[stream].airKg
+        ]),
+        ["Total", "", result.totalO2, result.totalAirKmol, result.totalAirNm3, result.totalAirKg],
+        [],
+        ["Component", "Formula", "MW", "O2 coeff", ...state.streams],
+        ...state.rows.map(row => [row.component, row.formula, row.mw, row.o2Coeff, ...state.streams.map(s => row.values[s])])
+      ];
+      const csv = "\uFEFF" + lines.map(row => row.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "feed-theoretical-air-result.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById("sampleBtn").addEventListener("click", loadSample);
+    document.getElementById("calcBtn").addEventListener("click", () => {
+      calculate();
+      setStatus("계산을 완료했습니다.", "ok");
+    });
+    document.getElementById("exportBtn").addEventListener("click", exportCsv);
+    document.getElementById("pasteBtn").addEventListener("click", readPaste);
+    document.getElementById("addRowBtn").addEventListener("click", addRow);
+    document.getElementById("addStreamBtn").addEventListener("click", addStream);
+    document.getElementById("fileInput").addEventListener("change", e => handleFile(e.target.files[0]));
+    document.getElementById("oxygenFraction").addEventListener("input", calculate);
+    document.getElementById("molarVolume").addEventListener("input", calculate);
+
+    document.getElementById("streamUnits").addEventListener("input", e => {
+      if (e.target.dataset.streamName !== undefined) {
+        const idx = Number(e.target.dataset.streamName);
+        const oldName = state.streams[idx];
+        const newName = e.target.value.trim() || oldName;
+        if (newName !== oldName && !state.streams.includes(newName)) {
+          state.streams[idx] = newName;
+          state.units[newName] = state.units[oldName];
+          delete state.units[oldName];
+          state.rows.forEach(row => {
+            row.values[newName] = row.values[oldName];
+            delete row.values[oldName];
+          });
+          renderAll();
+        }
+      }
+      if (e.target.dataset.streamUnit) {
+        state.units[e.target.dataset.streamUnit] = e.target.value;
+        calculate();
+      }
+    });
+
+    document.getElementById("inputTable").addEventListener("input", e => {
+      const rowIndex = Number(e.target.dataset.row);
+      if (!Number.isFinite(rowIndex)) return;
+      const row = state.rows[rowIndex];
+      if (e.target.dataset.field) {
+        const field = e.target.dataset.field;
+        row[field] = field === "mw" || field === "o2Coeff" ? toNumber(e.target.value) : e.target.value;
+      }
+      if (e.target.dataset.stream) {
+        row.values[e.target.dataset.stream] = e.target.value;
+      }
+      calculate();
+    });
+
+    document.getElementById("inputTable").addEventListener("click", e => {
+      const recalc = e.target.closest("[data-recalc]");
+      const del = e.target.closest("[data-delete]");
+      if (recalc) {
+        const row = state.rows[Number(recalc.dataset.recalc)];
+        row.formula = cleanFormula(row.formula);
+        row.mw = round(molecularWeightFromFormula(row.formula), 4) || row.mw;
+        row.o2Coeff = o2CoeffFromFormula(row.formula);
+        renderAll();
+      }
+      if (del) {
+        state.rows.splice(Number(del.dataset.delete), 1);
+        renderAll();
+      }
+    });
+
+    document.querySelectorAll(".tab").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
+        document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+        btn.classList.add("active");
+        document.getElementById(btn.dataset.view).classList.add("active");
+      });
+    });
+
+    loadSample();
+  </script>
+</body>
+</html>
