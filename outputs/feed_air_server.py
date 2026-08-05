@@ -12,6 +12,7 @@ from email import policy
 from email.parser import BytesParser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 
 ROOT = Path(__file__).resolve().parent
@@ -29,6 +30,9 @@ class FeedAirHandler(SimpleHTTPRequestHandler):
         sys.stdout.write("%s - %s\n" % (self.address_string(), fmt % args))
 
     def do_GET(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/parse" and parse_qs(parsed.query).get("template"):
+            return self._send_template()
         if self.path in {"/", ""}:
             self.path = "/feed-air-calculator.html"
         return super().do_GET()
@@ -76,6 +80,19 @@ class FeedAirHandler(SimpleHTTPRequestHandler):
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _send_template(self) -> None:
+        template_path = ROOT / "Standard_Composition_Table.xlsx"
+        if not template_path.exists():
+            self.send_error(404, "Template not found")
+            return
+        data = template_path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        self.send_header("Content-Disposition", 'attachment; filename="Standard_Composition_Table.xlsx"')
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)

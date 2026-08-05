@@ -70,7 +70,7 @@
       justify-content: flex-end;
     }
 
-    button, .file-label {
+    button, .file-label, .button-link {
       border: 1px solid var(--line);
       background: var(--paper);
       color: var(--ink);
@@ -83,6 +83,7 @@
       cursor: pointer;
       font-weight: 650;
       white-space: nowrap;
+      text-decoration: none;
     }
 
     svg.icon {
@@ -337,7 +338,7 @@
       header, main { padding-left: 12px; padding-right: 12px; }
       .two { grid-template-columns: 1fr; }
       .summary { grid-template-columns: 1fr; }
-      button, .file-label { width: 100%; justify-content: center; }
+      button, .file-label, .button-link { width: 100%; justify-content: center; }
       .topbar { display: grid; grid-template-columns: 1fr 1fr; }
       h1 { font-size: 21px; }
     }
@@ -356,6 +357,7 @@
         <input id="fileInput" type="file" accept=".xlsx,.xls,.csv,.pdf" />
       </label>
       <button id="sampleBtn" type="button" title="첨부 예시 데이터 입력"><i data-lucide="table"></i>예시 입력</button>
+      <a class="button-link" href="/api/parse?template=1" download="Standard_Composition_Table.xlsx" title="표준 엑셀 템플릿 다운로드"><i data-lucide="download"></i>표준 양식</a>
       <button id="calcBtn" class="primary" type="button" title="계산 실행"><i data-lucide="calculator"></i>계산</button>
       <button id="exportBtn" type="button" title="결과 CSV 저장"><i data-lucide="download"></i>CSV 저장</button>
     </div>
@@ -632,6 +634,7 @@
         .filter(row => row.some(Boolean));
       if (!rows.length) return;
 
+      if (normalizeStandardTemplateRows(rows)) return;
       if (normalizeStreamCompositionRows(rows)) return;
 
       let headerIndex = rows.findIndex(row => row.some(cell => /component|성분|formula|화학식/i.test(cell)));
@@ -691,6 +694,143 @@
       } else {
         setStatus("표를 읽었지만 성분 행을 찾지 못했습니다. 헤더에 Component 또는 Formula가 있는지 확인하세요.", "warn");
       }
+    }
+
+    function normalizeStandardTemplateRows(rows) {
+      const headerIndex = rows.findIndex(row =>
+        row.some(cell => /chemical\s*name/i.test(cell)) &&
+        row.some(cell => /chemical\s*fo?r?mula|formula/i.test(cell)) &&
+        row.some(cell => /mol\s*%|wt\s*%|kg\s*\/?\s*hr|nm3\s*\/?\s*hr/i.test(cell))
+      );
+      if (headerIndex < 0) return false;
+
+      const header = rows[headerIndex];
+      const nameCol = header.findIndex(cell => /chemical\s*name/i.test(cell));
+      const formulaCol = header.findIndex(cell => /chemical\s*fo?r?mula|formula/i.test(cell));
+      const mwCol = header.findIndex(cell => /molecular\s*weight|^mw$/i.test(cell));
+      const amountCols = [
+        { kind: "mol%", index: header.findIndex(cell => /mol\s*%/i.test(cell)) },
+        { kind: "wt%", index: header.findIndex(cell => /wt\s*%/i.test(cell)) },
+        { kind: "kg/h", index: header.findIndex(cell => /kg\s*\/?\s*(hr|h)/i.test(cell)) },
+        { kind: "Nm3/h", index: header.findIndex(cell => /n\s*m3\s*\/?\s*(hr|h)/i.test(cell)) }
+      ].filter(col => col.index >= 0);
+
+      if (nameCol < 0 && formulaCol < 0) return false;
+      if (!amountCols.length) return false;
+
+      const dataRows = rows.slice(headerIndex + 1)
+        .filter(row => (row[nameCol] || row[formulaCol] || "").trim())
+        .filter(row => !/total|note|참고/i.test(row.join(" ")));
+
+      const usableRows = dataRows.map(row => {
+        const rawName = nameCol >= 0 ? row[nameCol] : "";
+        const rawFormula = formulaCol >= 0 ? row[formulaCol] : "";
+        let formula = looksLikeFormula(rawFormula) ? rawFormula : "";
+        if (!formula && looksLikeFormula(rawName)) formula = rawName;
+        if (!formula) formula = formulaFromName(rawName || rawFormula);
+        let mw = mwCol >= 0 ? toNumber(row[mwCol]) : 0;
+        if (!mw) mw = molecularWeightFromFormula(formula);
+        return {
+          source: row,
+          component: rawName || rawFormula || formula,
+          formula,
+          mw
+        };
+      }).filter(row => row.component);
+
+      if (!usableRows.length) return false;
+
+      const selectedAmount = amountCols.find(col =>
+        usableRows.some(row => isNumeric(row.source[col.index]) && toNumber(row.source[col.index]) !== 0)
+      );
+      if (!selectedAmount) return false;
+
+      const total = readStandardTotalFlow(rows, headerIndex);
+      const streamName = "Standard Feed";
+      let unit = selectedAmount.kind;
+      let warning = "";
+      const valuesByRow = new Map();
+
+      if (selectedAmount.kind === "kg/h" || selectedAmount.kind === "Nm3/h") {
+        unit = selectedAmount.kind;
+        usableRows.forEach(row => valuesByRow.set(row, toNumber(row.source[selectedAmount.index])));
+      } else if (selectedAmount.kind === "mol%") {
+        if (!total.value || !total.unit) return false;
+        const missingMw = usableRows.filter(row => !row.mw || !Number.isFinite(row.mw));
+        if (total.unit === "kg/h" && missingMw.length) {
+          warning = "일부 성분의 MW가 없어 mol% + kg/hr 전체 유량 변환이 부정확할 수 있습니다.";
+        }
+        const mixtureMw = usableRows.reduce((sum, row) => {
+          const fraction = toNumber(row.source[selectedAmount.index]) / 100;
+          return sum + fraction * (row.mw || 0);
+        }, 0);
+        const totalKmol = total.unit === "Nm3/h"
+          ? total.value / (toNumber(document.getElementById("molarVolume").value) || 22.414)
+          : (mixtureMw ? total.value / mixtureMw : 0);
+        unit = "kmol/h";
+        usableRows.forEach(row => {
+          const pct = toNumber(row.source[selectedAmount.index]);
+          valuesByRow.set(row, round(totalKmol * pct / 100, 6));
+        });
+      } else if (selectedAmount.kind === "wt%") {
+        if (!total.value || !total.unit) return false;
+        if (total.unit === "kg/h") {
+          unit = "kg/h";
+          usableRows.forEach(row => {
+            const pct = toNumber(row.source[selectedAmount.index]);
+            valuesByRow.set(row, round(total.value * pct / 100, 6));
+          });
+        } else {
+          const denom = usableRows.reduce((sum, row) => {
+            const fraction = toNumber(row.source[selectedAmount.index]) / 100;
+            return sum + (row.mw ? fraction / row.mw : 0);
+          }, 0);
+          const totalKmol = total.value / (toNumber(document.getElementById("molarVolume").value) || 22.414);
+          unit = "kmol/h";
+          usableRows.forEach(row => {
+            const fraction = toNumber(row.source[selectedAmount.index]) / 100;
+            const moleFraction = denom && row.mw ? (fraction / row.mw) / denom : 0;
+            valuesByRow.set(row, round(totalKmol * moleFraction, 6));
+          });
+        }
+      }
+
+      state.streams = [streamName];
+      state.units = { [streamName]: unit };
+      state.rows = usableRows.map(row => ({
+        id: crypto.randomUUID(),
+        component: row.component,
+        formula: cleanFormula(row.formula),
+        mw: round(row.mw || 0, 4),
+        o2Coeff: o2CoeffFromFormula(row.formula),
+        values: { [streamName]: valuesByRow.get(row) || 0 }
+      }));
+      renderAll();
+      const totalText = total.value ? ` Total Flowrate ${fmt(total.value)} ${total.unit || ""} 기준.` : "";
+      setStatus(`표준 양식에서 ${state.rows.length}개 성분을 ${selectedAmount.kind} 입력으로 읽었습니다.${totalText} ${warning}`.trim(), warning ? "warn" : "ok");
+      return true;
+    }
+
+    function readStandardTotalFlow(rows, headerIndex) {
+      for (let r = Math.max(0, headerIndex - 8); r < headerIndex; r++) {
+        const row = rows[r];
+        const labelCol = row.findIndex(cell => /total\s*flow\s*rate|전체.*유량|총.*유량/i.test(cell));
+        if (labelCol < 0) continue;
+        for (let c = labelCol + 1; c < row.length; c++) {
+          const value = toNumber(row[c]);
+          if (!value) continue;
+          const unit = normalizeFlowUnit(row[c - 1]) || normalizeFlowUnit(rows[r - 1]?.[c]) || normalizeFlowUnit(row[labelCol]);
+          return { value, unit };
+        }
+      }
+      return { value: 0, unit: "" };
+    }
+
+    function normalizeFlowUnit(value) {
+      const s = String(value || "").replace(/\s+/g, "").toLowerCase();
+      if (/kg\/?(hr|h)/i.test(s)) return "kg/h";
+      if (/n?m3\/?(hr|h)/i.test(s)) return "Nm3/h";
+      return "";
     }
 
     function normalizeStreamCompositionRows(rows) {
