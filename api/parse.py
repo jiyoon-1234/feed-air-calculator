@@ -4,11 +4,29 @@ import json
 from email import policy
 from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler
+from pathlib import Path
+from urllib.parse import urlparse
 
 from outputs.feed_air_server import parse_uploaded_file
 
 
+ROOT = Path(__file__).resolve().parent.parent
+
+
 class handler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path in {"/", "/outputs/feed-air-calculator.html"}:
+            html_path = ROOT / "outputs" / "feed-air-calculator.html"
+            data = html_path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        self.send_error(404, "Not found")
+
     def do_OPTIONS(self) -> None:
         self.send_response(204)
         self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
