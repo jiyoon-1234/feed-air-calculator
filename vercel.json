@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/outputs/feed-air-calculator.html"
+    }
+  ],
+  "functions": {
+    "api/**/*.py": {
+      "excludeFiles": "{work/**,__pycache__/**,outputs/__pycache__/**,**/*.pyc}"
+    }
+  }
+}

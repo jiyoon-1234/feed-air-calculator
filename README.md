@@ -25,6 +25,20 @@ http://localhost:8766/
 
 If port `8766` is busy, the app automatically tries the next available port.
 
+## Deploy With Vercel
+
+Vercel is supported through a Python serverless function at `/api/parse`.
+
+1. Push this project to GitHub.
+2. Import the GitHub repository in Vercel.
+3. Keep the default framework setting as `Other`.
+4. Leave Build Command empty unless Vercel asks for one.
+5. Deploy.
+
+`vercel.json` routes `/` to the calculator UI and `/api/parse` to the upload parser.
+
+Vercel Functions have a request body limit, so very large Excel/PDF uploads may need Render instead.
+
 ## Deploy With Render
 
 1. Push this project to GitHub.
@@ -41,6 +55,6 @@ Render also detects `render.yaml`, so the settings can be applied automatically.
 
 ## Notes
 
-- GitHub Pages cannot run the Python upload parser, so use Render, Railway, Fly.io, or another Python web service host.
+- GitHub Pages cannot run the Python upload parser, so use Vercel, Render, Railway, Fly.io, or another Python web service host.
 - Scanned PDF files need OCR before upload. Text-based PDFs can be parsed.
 - Legacy `.xls` files should be saved as `.xlsx` or `.csv`.
