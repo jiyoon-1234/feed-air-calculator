@@ -1,2 +1,11 @@
+[project]
+name = "feed-air-calculator"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "openpyxl==3.1.5",
+  "pdfplumber==0.11.4"
+]
+
 [tool.vercel]
 entrypoint = "api.parse:handler"
