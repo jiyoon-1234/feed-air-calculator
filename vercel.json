@@ -5,10 +5,5 @@
       "source": "/",
       "destination": "/outputs/feed-air-calculator.html"
     }
-  ],
-  "functions": {
-    "api/**/*.py": {
-      "excludeFiles": "{work/**,__pycache__/**,outputs/__pycache__/**,**/*.pyc}"
-    }
-  }
+  ]
 }
