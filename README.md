@@ -14,7 +14,7 @@ Feed composition and flow calculator for theoretical air demand.
 ## Local Run
 
 ```powershell
-python app.py
+python outputs/feed_air_server.py
 ```
 
 Open:
@@ -48,7 +48,7 @@ Vercel Functions have a request body limit, so very large Excel/PDF uploads may 
 
 ```text
 Build Command: pip install -r requirements.txt
-Start Command: python app.py --no-browser
+Start Command: python outputs/feed_air_server.py --no-browser
 ```
 
 Render also detects `render.yaml`, so the settings can be applied automatically.

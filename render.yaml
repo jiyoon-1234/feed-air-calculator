@@ -3,5 +3,5 @@ services:
     name: feed-air-calculator
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python app.py --no-browser
+    startCommand: python outputs/feed_air_server.py --no-browser
     plan: free
