@@ -1020,9 +1020,9 @@
         row.innerHTML = `
           <input value="${escapeHtml(name)}" data-stream-name="${index}" aria-label="Feed 열 이름">
           <select data-stream-unit="${escapeHtml(name)}" aria-label="${escapeHtml(name)} 단위">
-            <option value="kg/h">kg/h</option>
-            <option value="kmol/h">kmol/h</option>
-            <option value="Nm3/h">Nm3/h</option>
+            <option value="kg/h">kg/hr</option>
+            <option value="kmol/h">kmol/hr</option>
+            <option value="Nm3/h">Nm3/hr</option>
           </select>
         `;
         root.appendChild(row);
@@ -1064,6 +1064,34 @@
       table.appendChild(tbody);
     }
 
+    function quantityToKmol(qty, unit, row, molarVolume) {
+      if (unit === "kg/h") return row.mw ? qty / row.mw : 0;
+      if (unit === "kmol/h") return qty;
+      if (unit === "Nm3/h") return qty / molarVolume;
+      return 0;
+    }
+
+    function kmolToQuantity(kmol, unit, row, molarVolume) {
+      if (unit === "kg/h") return kmol * (row.mw || 0);
+      if (unit === "kmol/h") return kmol;
+      if (unit === "Nm3/h") return kmol * molarVolume;
+      return 0;
+    }
+
+    function convertStreamUnit(stream, oldUnit, newUnit) {
+      if (!stream || oldUnit === newUnit) return;
+      const molarVolume = toNumber(document.getElementById("molarVolume").value) || 22.414;
+      state.rows.forEach(row => {
+        const qty = toNumber(row.values[stream]);
+        if (!qty) {
+          row.values[stream] = row.values[stream] || "";
+          return;
+        }
+        const kmol = quantityToKmol(qty, oldUnit, row, molarVolume);
+        row.values[stream] = round(kmolToQuantity(kmol, newUnit, row, molarVolume), 6);
+      });
+    }
+
     function calculate() {
       const oxygenFraction = toNumber(document.getElementById("oxygenFraction").value) || 0.21;
       const molarVolume = toNumber(document.getElementById("molarVolume").value) || 22.414;
@@ -1080,10 +1108,7 @@
         state.streams.forEach(stream => {
           const qty = toNumber(row.values[stream]);
           const unit = state.units[stream] || "kg/h";
-          let kmol = 0;
-          if (unit === "kg/h") kmol = row.mw ? qty / row.mw : 0;
-          if (unit === "kmol/h") kmol = qty;
-          if (unit === "Nm3/h") kmol = qty / molarVolume;
+          const kmol = quantityToKmol(qty, unit, row, molarVolume);
           const o2 = kmol * toNumber(row.o2Coeff);
           byStream[stream].o2 += o2;
           rowResults.push({
@@ -1303,11 +1328,42 @@
     document.getElementById("oxygenFraction").addEventListener("input", calculate);
     document.getElementById("molarVolume").addEventListener("input", calculate);
 
-    document.getElementById("streamUnits").addEventListener("input", e => {
+    document.getElementById("streamUnits").addEventListener("keydown", e => {
+      if (e.target.dataset.streamName !== undefined && e.key === "Enter") {
+        e.target.blur();
+      }
+    });
+
+    document.getElementById("streamUnits").addEventListener("focusout", e => {
+      if (e.target.dataset.streamName === undefined) return;
+      const idx = Number(e.target.dataset.streamName);
+      const oldName = state.streams[idx];
+      const newName = e.target.value.trim() || oldName;
+      if (newName !== oldName && state.streams.includes(newName)) {
+        e.target.value = oldName;
+        return setStatus("이미 같은 이름의 Feed 열이 있습니다.", "warn");
+      }
+      if (newName !== oldName) {
+        state.streams[idx] = newName;
+        state.units[newName] = state.units[oldName];
+        delete state.units[oldName];
+        state.rows.forEach(row => {
+          row.values[newName] = row.values[oldName];
+          delete row.values[oldName];
+        });
+        renderAll();
+      }
+    });
+
+    document.getElementById("streamUnits").addEventListener("change", e => {
       if (e.target.dataset.streamName !== undefined) {
         const idx = Number(e.target.dataset.streamName);
         const oldName = state.streams[idx];
         const newName = e.target.value.trim() || oldName;
+        if (newName !== oldName && state.streams.includes(newName)) {
+          e.target.value = oldName;
+          return setStatus("이미 같은 이름의 Feed 열이 있습니다.", "warn");
+        }
         if (newName !== oldName && !state.streams.includes(newName)) {
           state.streams[idx] = newName;
           state.units[newName] = state.units[oldName];
@@ -1320,8 +1376,14 @@
         }
       }
       if (e.target.dataset.streamUnit) {
-        state.units[e.target.dataset.streamUnit] = e.target.value;
+        const stream = e.target.dataset.streamUnit;
+        const oldUnit = state.units[stream] || "kg/h";
+        const newUnit = e.target.value;
+        convertStreamUnit(stream, oldUnit, newUnit);
+        state.units[stream] = newUnit;
+        renderInputTable();
         calculate();
+        renderIcons();
       }
     });
 
