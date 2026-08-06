@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Feed 이론공기량 계산기</title>
+  <title>Process Calculator - Combustion Air</title>
   <style>
     :root {
       --bg: #f5f7f5;
@@ -347,8 +347,7 @@
 <body>
   <header>
     <div>
-      <h1>Feed 이론공기량 계산기</h1>
-      <div class="sub">Excel, CSV, 텍스트 PDF 표를 불러와 성분별 화학식으로 산소 요구량과 이론공기량을 계산합니다.</div>
+      <h1>Process Calculator - Combustion Air</h1>
     </div>
     <div class="topbar">
       <label class="file-label" title="Excel, CSV, PDF 파일 업로드">
@@ -490,8 +489,12 @@
       const raw = String(value || "").trim();
       const key = raw.toLowerCase().replace(/\s+/g, " ");
       const aliases = {
+        methane: "CH4",
         water: "H2O",
         "h2o": "H2O",
+        oxygen: "O2",
+        nitrogen: "N2",
+        "carbon dioxide": "CO2",
         "sulfur": "S",
         "sulphur": "S",
         "sulfur vapor (sx)": "S",
@@ -708,12 +711,10 @@
       const nameCol = header.findIndex(cell => /chemical\s*name/i.test(cell));
       const formulaCol = header.findIndex(cell => /chemical\s*fo?r?mula|formula/i.test(cell));
       const mwCol = header.findIndex(cell => /molecular\s*weight|^mw$/i.test(cell));
-      const amountCols = [
-        { kind: "mol%", index: header.findIndex(cell => /mol\s*%/i.test(cell)) },
-        { kind: "wt%", index: header.findIndex(cell => /wt\s*%/i.test(cell)) },
-        { kind: "kg/h", index: header.findIndex(cell => /kg\s*\/?\s*(hr|h)/i.test(cell)) },
-        { kind: "Nm3/h", index: header.findIndex(cell => /n\s*m3\s*\/?\s*(hr|h)/i.test(cell)) }
-      ].filter(col => col.index >= 0);
+      const firstAmountCol = Math.max(nameCol, formulaCol, mwCol) + 1;
+      const amountCols = header
+        .map((cell, index) => ({ kind: normalizeAmountKind(cell), index }))
+        .filter(col => col.kind && col.index >= firstAmountCol);
 
       if (nameCol < 0 && formulaCol < 0) return false;
       if (!amountCols.length) return false;
@@ -740,74 +741,110 @@
 
       if (!usableRows.length) return false;
 
-      const selectedAmount = amountCols.find(col =>
-        usableRows.some(row => isNumeric(row.source[col.index]) && toNumber(row.source[col.index]) !== 0)
+      const streamRowIndex = rows.findIndex((row, index) =>
+        index < headerIndex && row.some(cell => /stream\s*no\.?|feed\s*no\.?/i.test(cell))
       );
-      if (!selectedAmount) return false;
+      const totalRowIndex = rows.reduce((found, row, index) =>
+        index < headerIndex &&
+        row.some(cell => /total\s*flow\s*rate|전체.*유량|총.*유량/i.test(cell)) &&
+        row.some(cell => isNumeric(cell))
+          ? index
+          : found
+      , -1);
+      const maxCols = Math.max(...rows.map(row => row.length));
+      let streamSpecs = [];
 
-      const total = readStandardTotalFlow(rows, headerIndex);
-      const streamName = "Standard Feed";
-      let unit = selectedAmount.kind;
-      let warning = "";
-      const valuesByRow = new Map();
-
-      if (selectedAmount.kind === "kg/h" || selectedAmount.kind === "Nm3/h") {
-        unit = selectedAmount.kind;
-        usableRows.forEach(row => valuesByRow.set(row, toNumber(row.source[selectedAmount.index])));
-      } else if (selectedAmount.kind === "mol%") {
-        if (!total.value || !total.unit) return false;
-        const missingMw = usableRows.filter(row => !row.mw || !Number.isFinite(row.mw));
-        if (total.unit === "kg/h" && missingMw.length) {
-          warning = "일부 성분의 MW가 없어 mol% + kg/hr 전체 유량 변환이 부정확할 수 있습니다.";
-        }
-        const mixtureMw = usableRows.reduce((sum, row) => {
-          const fraction = toNumber(row.source[selectedAmount.index]) / 100;
-          return sum + fraction * (row.mw || 0);
-        }, 0);
-        const totalKmol = total.unit === "Nm3/h"
-          ? total.value / (toNumber(document.getElementById("molarVolume").value) || 22.414)
-          : (mixtureMw ? total.value / mixtureMw : 0);
-        unit = "kmol/h";
-        usableRows.forEach(row => {
-          const pct = toNumber(row.source[selectedAmount.index]);
-          valuesByRow.set(row, round(totalKmol * pct / 100, 6));
-        });
-      } else if (selectedAmount.kind === "wt%") {
-        if (!total.value || !total.unit) return false;
-        if (total.unit === "kg/h") {
-          unit = "kg/h";
-          usableRows.forEach(row => {
-            const pct = toNumber(row.source[selectedAmount.index]);
-            valuesByRow.set(row, round(total.value * pct / 100, 6));
-          });
-        } else {
-          const denom = usableRows.reduce((sum, row) => {
-            const fraction = toNumber(row.source[selectedAmount.index]) / 100;
-            return sum + (row.mw ? fraction / row.mw : 0);
-          }, 0);
-          const totalKmol = total.value / (toNumber(document.getElementById("molarVolume").value) || 22.414);
-          unit = "kmol/h";
-          usableRows.forEach(row => {
-            const fraction = toNumber(row.source[selectedAmount.index]) / 100;
-            const moleFraction = denom && row.mw ? (fraction / row.mw) / denom : 0;
-            valuesByRow.set(row, round(totalKmol * moleFraction, 6));
-          });
+      if (streamRowIndex >= 0) {
+        for (let col = firstAmountCol; col < maxCols; col++) {
+          const kind = normalizeAmountKind(header[col]);
+          if (!kind) continue;
+          const streamName = rows[streamRowIndex][col] || `Feed #${streamSpecs.length + 1}`;
+          const hasValues = usableRows.some(row => isNumeric(row.source[col]) && toNumber(row.source[col]) !== 0);
+          const total = readStandardTotalFlowAt(rows, totalRowIndex, col);
+          if (!hasValues) continue;
+          if ((kind === "mol%" || kind === "wt%") && (!total.value || !total.unit)) continue;
+          streamSpecs.push({ name: streamName, kind, index: col, total });
         }
       }
 
-      state.streams = [streamName];
-      state.units = { [streamName]: unit };
+      if (!streamSpecs.length) {
+        const selectedAmount = amountCols.find(col =>
+          usableRows.some(row => isNumeric(row.source[col.index]) && toNumber(row.source[col.index]) !== 0)
+        );
+        if (!selectedAmount) return false;
+        streamSpecs = [{
+          name: "Standard Feed",
+          kind: selectedAmount.kind,
+          index: selectedAmount.index,
+          total: readStandardTotalFlow(rows, headerIndex)
+        }];
+      }
+
+      let warning = "";
+      const valuesByStream = {};
+      const unitsByStream = {};
+
+      for (const stream of streamSpecs) {
+        const valuesByRow = new Map();
+        let unit = stream.kind;
+        if (stream.kind === "kg/h" || stream.kind === "Nm3/h") {
+          usableRows.forEach(row => valuesByRow.set(row, toNumber(row.source[stream.index])));
+        } else if (stream.kind === "mol%") {
+          if (!stream.total.value || !stream.total.unit) return false;
+        const missingMw = usableRows.filter(row => !row.mw || !Number.isFinite(row.mw));
+          if (stream.total.unit === "kg/h" && missingMw.length) {
+            warning = "일부 성분의 MW가 없어 mol% + kg/hr 전체 유량 변환이 부정확할 수 있습니다.";
+          }
+          const mixtureMw = usableRows.reduce((sum, row) => {
+            const fraction = toNumber(row.source[stream.index]) / 100;
+            return sum + fraction * (row.mw || 0);
+          }, 0);
+          const totalKmol = stream.total.unit === "Nm3/h"
+            ? stream.total.value / (toNumber(document.getElementById("molarVolume").value) || 22.414)
+            : (mixtureMw ? stream.total.value / mixtureMw : 0);
+          unit = "kmol/h";
+          usableRows.forEach(row => {
+            const pct = toNumber(row.source[stream.index]);
+            valuesByRow.set(row, round(totalKmol * pct / 100, 6));
+          });
+        } else if (stream.kind === "wt%") {
+          if (!stream.total.value || !stream.total.unit) return false;
+          if (stream.total.unit === "kg/h") {
+            unit = "kg/h";
+            usableRows.forEach(row => {
+              const pct = toNumber(row.source[stream.index]);
+              valuesByRow.set(row, round(stream.total.value * pct / 100, 6));
+            });
+          } else {
+            const denom = usableRows.reduce((sum, row) => {
+              const fraction = toNumber(row.source[stream.index]) / 100;
+              return sum + (row.mw ? fraction / row.mw : 0);
+            }, 0);
+            const totalKmol = stream.total.value / (toNumber(document.getElementById("molarVolume").value) || 22.414);
+            unit = "kmol/h";
+            usableRows.forEach(row => {
+              const fraction = toNumber(row.source[stream.index]) / 100;
+              const moleFraction = denom && row.mw ? (fraction / row.mw) / denom : 0;
+              valuesByRow.set(row, round(totalKmol * moleFraction, 6));
+            });
+          }
+        }
+        unitsByStream[stream.name] = unit;
+        valuesByStream[stream.name] = valuesByRow;
+      }
+
+      state.streams = streamSpecs.map(stream => stream.name);
+      state.units = unitsByStream;
       state.rows = usableRows.map(row => ({
         id: crypto.randomUUID(),
         component: row.component,
         formula: cleanFormula(row.formula),
         mw: round(row.mw || 0, 4),
         o2Coeff: o2CoeffFromFormula(row.formula),
-        values: { [streamName]: valuesByRow.get(row) || 0 }
+        values: Object.fromEntries(state.streams.map(stream => [stream, valuesByStream[stream]?.get(row) || 0]))
       }));
       renderAll();
-      const totalText = total.value ? ` Total Flowrate ${fmt(total.value)} ${total.unit || ""} 기준.` : "";
-      setStatus(`표준 양식에서 ${state.rows.length}개 성분을 ${selectedAmount.kind} 입력으로 읽었습니다.${totalText} ${warning}`.trim(), warning ? "warn" : "ok");
+      setStatus(`표준 양식에서 ${state.rows.length}개 성분과 ${state.streams.length}개 Feed를 읽었습니다. ${warning}`.trim(), warning ? "warn" : "ok");
       return true;
     }
 
@@ -824,6 +861,28 @@
         }
       }
       return { value: 0, unit: "" };
+    }
+
+    function readStandardTotalFlowAt(rows, totalRowIndex, col) {
+      if (totalRowIndex < 0) return { value: 0, unit: "" };
+      const row = rows[totalRowIndex] || [];
+      const value = toNumber(row[col]);
+      if (!value) return { value: 0, unit: "" };
+      const unit = normalizeFlowUnit(row[col + 1]) ||
+        normalizeFlowUnit(row[col]) ||
+        normalizeFlowUnit(row[col - 1]) ||
+        normalizeFlowUnit(rows[totalRowIndex - 1]?.[col]) ||
+        normalizeFlowUnit(rows[totalRowIndex - 1]?.[col + 1]);
+      return { value, unit };
+    }
+
+    function normalizeAmountKind(value) {
+      const s = String(value || "").replace(/\s+/g, "").toLowerCase();
+      if (/^mol%$/.test(s)) return "mol%";
+      if (/^wt%$/.test(s)) return "wt%";
+      if (/^kg\/?(hr|h)$/.test(s)) return "kg/h";
+      if (/^n?m3\/?(hr|h)$/.test(s)) return "Nm3/h";
+      return "";
     }
 
     function normalizeFlowUnit(value) {
@@ -1305,7 +1364,10 @@
       });
     });
 
-    loadSample();
+    state.streams = ["Feed #1"];
+    state.units = { "Feed #1": "kg/h" };
+    state.rows = [];
+    renderAll();
   </script>
 </body>
 </html>
