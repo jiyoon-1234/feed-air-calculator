@@ -4,6 +4,10 @@
     {
       "source": "/",
       "destination": "/outputs/feed-air-calculator.html"
+    },
+    {
+      "source": "/xlsx.full.min.js",
+      "destination": "/outputs/xlsx.full.min.js"
     }
   ]
 }

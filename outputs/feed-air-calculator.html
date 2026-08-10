@@ -266,7 +266,7 @@
     }
 
     .neutral-summary {
-      grid-template-columns: repeat(3, minmax(170px, 1fr));
+      grid-template-columns: repeat(5, minmax(150px, 1fr));
     }
 
     .metric {
@@ -528,12 +528,20 @@
               <div id="neutralEqMetric" class="v">0 kmol-eq/h</div>
             </div>
             <div class="metric">
-              <div class="k">순수 약품량</div>
-              <div id="neutralPureMetric" class="v">0 kg/h</div>
+              <div class="k">마진 전 순수 약품량</div>
+              <div id="neutralPureBeforeMetric" class="v">0 kg/h</div>
             </div>
             <div class="metric">
-              <div class="k">투입 약품량</div>
-              <div id="neutralActualMetric" class="v">0 kg/h</div>
+              <div class="k">마진 전 투입 약품량</div>
+              <div id="neutralActualBeforeMetric" class="v">0 kg/h</div>
+            </div>
+            <div class="metric">
+              <div class="k">마진 후 순수 약품량</div>
+              <div id="neutralPureAfterMetric" class="v">0 kg/h</div>
+            </div>
+            <div class="metric">
+              <div class="k">마진 후 투입 약품량</div>
+              <div id="neutralActualAfterMetric" class="v">0 kg/h</div>
             </div>
           </section>
 
@@ -549,7 +557,7 @@
                   <label>약품 순도 %
                     <input id="neutralPurity" type="number" min="0.1" max="100" step="0.1" value="100" />
                   </label>
-                  <label>과잉률 %
+                  <label>마진(과잉률) %
                     <input id="neutralExcess" type="number" min="0" step="0.1" value="10" />
                   </label>
                 </div>
@@ -560,6 +568,7 @@
                   <button id="neutralAddRowBtn" type="button"><i data-lucide="plus"></i>성분 추가</button>
                   <button id="neutralSampleBtn" type="button"><i data-lucide="table"></i>예시 입력</button>
                   <button id="neutralCalcBtn" class="primary" type="button"><i data-lucide="calculator"></i>계산</button>
+                  <button id="neutralExportBtn" type="button"><i data-lucide="download"></i>Excel 저장</button>
                 </div>
                 <div class="formula-note">
                   산성 성분별 등가수와 중화약품의 1 mol당 중화 등가수를 기준으로 계산합니다. 특수 반응식은 등가수 칸을 직접 수정하세요.
@@ -589,6 +598,7 @@
     </div>
   </div>
 
+  <script src="xlsx.full.min.js"></script>
   <script>
     const state = {
       streams: ["VG #1", "VG #2", "WL", "NG"],
@@ -1589,20 +1599,27 @@
         const kmol = neutralQtyToKmol(row);
         const eqKmol = kmol * toNumber(row.eq);
         const reagentKmol = reagent.capacity ? eqKmol / reagent.capacity : 0;
-        const pureKg = reagentKmol * reagent.mw;
+        const pureBeforeKg = reagentKmol * reagent.mw;
+        const actualBeforeKg = purity ? pureBeforeKg / purity : 0;
+        const pureAfterKg = pureBeforeKg * (1 + excess);
+        const actualAfterKg = purity ? pureAfterKg / purity : 0;
         totalEq += eqKmol;
-        return { row, kmol, eqKmol, reagentKmol, pureKg };
+        return { row, kmol, eqKmol, reagentKmol, pureBeforeKg, actualBeforeKg, pureAfterKg, actualAfterKg };
       });
-      const pureKg = results.reduce((sum, r) => sum + r.pureKg, 0);
-      const actualKg = purity ? pureKg * (1 + excess) / purity : 0;
+      const pureBeforeKg = results.reduce((sum, r) => sum + r.pureBeforeKg, 0);
+      const actualBeforeKg = results.reduce((sum, r) => sum + r.actualBeforeKg, 0);
+      const pureAfterKg = results.reduce((sum, r) => sum + r.pureAfterKg, 0);
+      const actualAfterKg = results.reduce((sum, r) => sum + r.actualAfterKg, 0);
       document.getElementById("neutralEqMetric").textContent = `${fmt(totalEq)} kmol-eq/h`;
-      document.getElementById("neutralPureMetric").textContent = `${fmt(pureKg)} kg/h`;
-      document.getElementById("neutralActualMetric").textContent = `${fmt(actualKg)} kg/h`;
-      renderNeutralResultTable(results, reagent, pureKg, actualKg);
-      return { totalEq, pureKg, actualKg, results };
+      document.getElementById("neutralPureBeforeMetric").textContent = `${fmt(pureBeforeKg)} kg/h`;
+      document.getElementById("neutralActualBeforeMetric").textContent = `${fmt(actualBeforeKg)} kg/h`;
+      document.getElementById("neutralPureAfterMetric").textContent = `${fmt(pureAfterKg)} kg/h`;
+      document.getElementById("neutralActualAfterMetric").textContent = `${fmt(actualAfterKg)} kg/h`;
+      renderNeutralResultTable(results, reagent, { pureBeforeKg, actualBeforeKg, pureAfterKg, actualAfterKg });
+      return { totalEq, pureBeforeKg, actualBeforeKg, pureAfterKg, actualAfterKg, results, reagent, purity, excess };
     }
 
-    function renderNeutralResultTable(results, reagent, pureKg, actualKg) {
+    function renderNeutralResultTable(results, reagent, totals) {
       const table = document.getElementById("neutralResultTable");
       table.innerHTML = `
         <thead>
@@ -1611,7 +1628,10 @@
             <th>유량 kmol/h</th>
             <th>산 등가 kmol-eq/h</th>
             <th>${escapeHtml(reagent.name)} kmol/h</th>
-            <th>${escapeHtml(reagent.name)} kg/h</th>
+            <th>마진 전 순수량 kg/h</th>
+            <th>마진 전 투입량 kg/h</th>
+            <th>마진 후 순수량 kg/h</th>
+            <th>마진 후 투입량 kg/h</th>
           </tr>
         </thead>
         <tbody>
@@ -1621,19 +1641,70 @@
               <td class="right">${fmt(r.kmol)}</td>
               <td class="right">${fmt(r.eqKmol)}</td>
               <td class="right">${fmt(r.reagentKmol)}</td>
-              <td class="right">${fmt(r.pureKg)}</td>
+              <td class="right">${fmt(r.pureBeforeKg)}</td>
+              <td class="right">${fmt(r.actualBeforeKg)}</td>
+              <td class="right">${fmt(r.pureAfterKg)}</td>
+              <td class="right">${fmt(r.actualAfterKg)}</td>
             </tr>
           `).join("")}
           <tr>
-            <th class="left" colspan="4">순수 ${escapeHtml(reagent.name)}</th>
-            <th class="right">${fmt(pureKg)}</th>
-          </tr>
-          <tr>
-            <th class="left" colspan="4">순도/과잉률 반영 투입량</th>
-            <th class="right">${fmt(actualKg)}</th>
+            <th class="left" colspan="4">합계</th>
+            <th class="right">${fmt(totals.pureBeforeKg)}</th>
+            <th class="right">${fmt(totals.actualBeforeKg)}</th>
+            <th class="right">${fmt(totals.pureAfterKg)}</th>
+            <th class="right">${fmt(totals.actualAfterKg)}</th>
           </tr>
         </tbody>
       `;
+    }
+
+    function exportNeutralizationExcel() {
+      if (typeof XLSX === "undefined") {
+        document.getElementById("neutralStatus").textContent = "Excel 저장 모듈을 불러오지 못했습니다. 인터넷 연결을 확인하세요.";
+        document.getElementById("neutralStatus").className = "notice";
+        return;
+      }
+
+      const calc = calculateNeutralization();
+      const settings = [
+        ["항목", "값", "단위"],
+        ["중화약품", calc.reagent.name, ""],
+        ["약품 분자량", calc.reagent.mw, "kg/kmol"],
+        ["약품 중화용량", calc.reagent.capacity, "eq/mol"],
+        ["약품 순도", calc.purity * 100, "%"],
+        ["마진(과잉률)", calc.excess * 100, "%"],
+        ["Nm3 환산값", toNumber(document.getElementById("neutralMolarVolume").value) || 22.414, "Nm3/kmol"],
+        [],
+        ["산성 등가량 합계", calc.totalEq, "kmol-eq/h"],
+        ["마진 전 순수 약품량", calc.pureBeforeKg, "kg/h"],
+        ["마진 전 투입 약품량", calc.actualBeforeKg, "kg/h"],
+        ["마진 후 순수 약품량", calc.pureAfterKg, "kg/h"],
+        ["마진 후 투입 약품량", calc.actualAfterKg, "kg/h"]
+      ];
+      const inputs = [
+        ["성분명", "화학식", "MW", "산성 등가수", "입력 유량", "입력 단위"],
+        ...neutralState.rows.map(row => [row.component, row.formula, row.mw, row.eq, row.qty, row.unit.replace("/h", "/hr")])
+      ];
+      const results = [
+        ["성분명", "화학식", "성분 유량 (kmol/h)", "산성 등가량 (kmol-eq/h)", `${calc.reagent.name} (kmol/h)`, "마진 전 순수량 (kg/h)", "마진 전 투입량 (kg/h)", "마진 후 순수량 (kg/h)", "마진 후 투입량 (kg/h)"],
+        ...calc.results.map(r => [r.row.component, r.row.formula, r.kmol, r.eqKmol, r.reagentKmol, r.pureBeforeKg, r.actualBeforeKg, r.pureAfterKg, r.actualAfterKg]),
+        ["합계", "", "", calc.totalEq, "", calc.pureBeforeKg, calc.actualBeforeKg, calc.pureAfterKg, calc.actualAfterKg]
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      const sheets = [
+        ["설정", settings, [22, 18, 15]],
+        ["입력값", inputs, [18, 14, 12, 16, 14, 14]],
+        ["계산결과", results, [18, 14, 22, 24, 18, 22, 22, 22, 22]]
+      ];
+      sheets.forEach(([name, data, widths]) => {
+        const sheet = XLSX.utils.aoa_to_sheet(data);
+        sheet["!cols"] = widths.map(wch => ({ wch }));
+        XLSX.utils.book_append_sheet(workbook, sheet, name);
+      });
+      XLSX.writeFile(workbook, "neutralization-calculation-result.xlsx");
+      document.getElementById("neutralStatus").textContent = "입력값과 계산 결과를 Excel 파일로 저장했습니다.";
+      document.getElementById("neutralStatus").className = "notice ok";
     }
 
     function setTool(tool) {
@@ -1680,6 +1751,7 @@
       document.getElementById("neutralStatus").textContent = "중화약품량 계산이 완료되었습니다.";
       document.getElementById("neutralStatus").className = "notice ok";
     });
+    document.getElementById("neutralExportBtn").addEventListener("click", exportNeutralizationExcel);
     document.getElementById("neutralAddRowBtn").addEventListener("click", () => {
       neutralState.rows.push(makeNeutralRow());
       renderNeutralAll();
