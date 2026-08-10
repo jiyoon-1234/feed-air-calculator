@@ -28,6 +28,16 @@ class handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return
+        if path in {"/xlsx.full.min.js", "/outputs/xlsx.full.min.js"}:
+            script_path = ROOT / "outputs" / "xlsx.full.min.js"
+            data = script_path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/javascript; charset=utf-8")
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         self.send_error(404, "Not found")
 
     def do_OPTIONS(self) -> None:
