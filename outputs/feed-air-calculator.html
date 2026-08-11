@@ -463,6 +463,10 @@
       gap: 7px;
     }
 
+    .segmented-control.two-options {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .segmented-control button {
       width: 100%;
       justify-content: center;
@@ -481,6 +485,18 @@
     }
 
     .pipe-property-group.active {
+      display: grid;
+    }
+
+    .pipe-mode-panel {
+      margin-bottom: 14px;
+    }
+
+    .pipe-mode-group {
+      display: none;
+    }
+
+    .pipe-mode-group.active {
       display: grid;
     }
 
@@ -527,7 +543,7 @@
         <button class="tool-choice active" type="button" data-tool="combustion"><i data-lucide="calculator"></i>Combustion Air</button>
         <button class="tool-choice" type="button" data-tool="neutralization"><i data-lucide="sigma"></i>Neutralization</button>
         <button class="tool-choice" type="button" data-tool="conversion"><i data-lucide="arrow-right-left"></i>Unit Conversion</button>
-        <button class="tool-choice" type="button" data-tool="pipe"><i data-lucide="circle-dot"></i>Pipe Diameter</button>
+        <button class="tool-choice" type="button" data-tool="pipe"><i data-lucide="circle-dot"></i>Pipe Sizing</button>
       </div>
     </aside>
 
@@ -749,9 +765,17 @@
         </section>
 
         <section id="pipePage" class="tool-page">
-          <section class="summary pipe-summary" aria-label="배관 직경 계산 요약">
+          <section class="panel pipe-mode-panel" aria-label="배관 계산 모드">
+            <div class="panel-body">
+              <div class="segmented-control two-options" role="tablist" aria-label="배관 계산 모드">
+                <button class="active" role="tab" type="button" data-pipe-mode="diameter">Diameter Sizing</button>
+                <button role="tab" type="button" data-pipe-mode="pressureDrop">Pressure Drop</button>
+              </div>
+            </div>
+          </section>
+          <section class="summary pipe-summary" aria-label="배관 계산 요약">
             <div class="metric">
-              <div class="k">필요 Pipe ID</div>
+              <div id="pipeDiameterMetricLabel" class="k">필요 Pipe ID</div>
               <div id="pipeDiameterMetric" class="v">- mm</div>
             </div>
             <div class="metric">
@@ -850,7 +874,7 @@
             </aside>
 
             <section class="panel">
-              <h2>유체 물성 및 설계 기준</h2>
+              <h2 id="pipeCriteriaTitle">유체 물성 및 설계 기준</h2>
               <div class="panel-body">
                 <div id="pipeLiquidProperties" class="pipe-property-group active">
                   <div class="two">
@@ -899,7 +923,7 @@
                     <input id="pipeTwoGasViscosity" type="number" min="0.000001" step="any" value="0.0181" inputmode="decimal" />
                   </label>
                 </div>
-                <div class="two">
+                <div id="pipeSizingCriteria" class="two pipe-mode-group active">
                   <label>허용 유속 m/s
                     <input id="pipeMaxVelocity" type="number" min="0.01" step="any" value="2" inputmode="decimal" />
                   </label>
@@ -907,13 +931,24 @@
                     <input id="pipeMaxPressureDrop" type="number" min="0.001" step="any" value="100" inputmode="decimal" />
                   </label>
                 </div>
+                <div id="pipePressureDropInputs" class="two pipe-mode-group">
+                  <label>실제 Pipe ID
+                    <input id="pipeActualDiameter" type="number" min="0.001" step="any" value="150" inputmode="decimal" />
+                  </label>
+                  <label>직경 단위
+                    <select id="pipeActualDiameterUnit">
+                      <option value="mm">mm</option>
+                      <option value="in">inch</option>
+                    </select>
+                  </label>
+                </div>
                 <button id="pipeCalcBtn" class="primary" type="button"><i data-lucide="calculator"></i>계산</button>
                 <div class="table-wrap">
-                  <table class="results-table pipe-result-table" aria-label="배관 직경 상세 결과">
+                  <table class="results-table pipe-result-table" aria-label="배관 계산 상세 결과">
                     <tbody id="pipeResultBody"></tbody>
                   </table>
                 </div>
-                <div class="formula-note">
+                <div id="pipeFormulaNote" class="formula-note">
                   결과는 선택한 유속과 압력강하 한계를 만족하는 최소 내경입니다. Nm³ 기준은 0 °C, 1 atm, Z=1입니다. 실제 설계에서는 표준 호칭경과 Schedule의 실제 ID, 부식여유, 침식, 소음, 서지 및 적용 코드를 별도로 검토하세요.
                 </div>
               </div>
@@ -1139,6 +1174,7 @@
     };
 
     const pipeState = {
+      mode: "diameter",
       phase: "liquid",
       material: "carbonSteel"
     };
@@ -2486,6 +2522,25 @@
       document.getElementById("pipeStatus").className = type === "ok" ? "notice ok" : "notice";
     }
 
+    function pipeOperatingInputs() {
+      const straightLength = pipeNumericValue("pipeLength");
+      const fittingRaw = document.getElementById("pipeFittingLength").value.trim();
+      const fittingLength = fittingRaw === "" ? 0 : Number(fittingRaw);
+      const roughnessMm = pipeNumericValue("pipeRoughness");
+      if (!(straightLength > 0)) throw new Error("직관 길이를 0보다 크게 입력하세요.");
+      if (!(fittingLength >= 0)) throw new Error("피팅 상당길이는 0 이상으로 입력하거나 공란으로 두세요.");
+      if (!(roughnessMm >= 0)) throw new Error("절대 조도는 0 이상으로 입력하세요.");
+      return {
+        effectiveLength: straightLength + fittingLength,
+        roughnessMm,
+        roughnessM: roughnessMm / 1000
+      };
+    }
+
+    function pipeFlowRegime(reynolds) {
+      return reynolds < 2300 ? "Laminar" : reynolds < 4000 ? "Transitional" : "Turbulent";
+    }
+
     function calculatePipeDiameter() {
       if (document.getElementById("pipeFlow").value.trim() === "") {
         resetPipeResult();
@@ -2493,21 +2548,13 @@
       }
       try {
         const fluid = derivePipeFluid();
-        const straightLength = pipeNumericValue("pipeLength");
-        const fittingRaw = document.getElementById("pipeFittingLength").value.trim();
-        const fittingLength = fittingRaw === "" ? 0 : Number(fittingRaw);
+        const operating = pipeOperatingInputs();
         const maxVelocity = pipeNumericValue("pipeMaxVelocity");
         const maxPressureDrop = pipeNumericValue("pipeMaxPressureDrop");
-        const roughnessMm = pipeNumericValue("pipeRoughness");
-        if (!(straightLength > 0)) throw new Error("직관 길이를 0보다 크게 입력하세요.");
-        if (!(fittingLength >= 0)) throw new Error("피팅 상당길이는 0 이상으로 입력하거나 공란으로 두세요.");
         if (!(maxVelocity > 0) || !(maxPressureDrop > 0)) throw new Error("허용 유속과 압력강하를 0보다 크게 입력하세요.");
-        if (!(roughnessMm >= 0)) throw new Error("절대 조도는 0 이상으로 입력하세요.");
 
-        const effectiveLength = straightLength + fittingLength;
-        const roughnessM = roughnessMm / 1000;
         const meetsLimits = diameter => {
-          const h = pipeHydraulics(diameter, fluid, effectiveLength, roughnessM);
+          const h = pipeHydraulics(diameter, fluid, operating.effectiveLength, operating.roughnessM);
           return h.velocity <= maxVelocity && h.pressureDropKpa <= maxPressureDrop;
         };
         let low = 0.001;
@@ -2519,13 +2566,13 @@
           else low = mid;
         }
         const diameter = high;
-        const hydraulics = pipeHydraulics(diameter, fluid, effectiveLength, roughnessM);
+        const hydraulics = pipeHydraulics(diameter, fluid, operating.effectiveLength, operating.roughnessM);
         const velocityUse = hydraulics.velocity / maxVelocity;
         const pressureUse = hydraulics.pressureDropKpa / maxPressureDrop;
         const controlling = Math.abs(velocityUse - pressureUse) < 0.01
           ? "유속 및 압력강하"
           : velocityUse > pressureUse ? "허용 유속" : "허용 압력강하";
-        const regime = hydraulics.reynolds < 2300 ? "Laminar" : hydraulics.reynolds < 4000 ? "Transitional" : "Turbulent";
+        const regime = pipeFlowRegime(hydraulics.reynolds);
 
         document.getElementById("pipeDiameterMetric").textContent = `${fmt(diameter * 1000)} mm`;
         document.getElementById("pipeVelocityMetric").textContent = `${fmt(hydraulics.velocity)} m/s`;
@@ -2537,10 +2584,10 @@
         const rows = [
           ["유체 모델", fluid.model],
           ["배관 재질", pipeMaterials[pipeState.material].label],
-          ["절대 조도", `${fmt(roughnessMm)} mm`],
+          ["절대 조도", `${fmt(operating.roughnessMm)} mm`],
           ["실제 체적유량", `${fmt(fluid.q * 3600)} m³/hr`],
           ["질량유량", `${fmt(fluid.massFlow * 3600)} kg/hr`],
-          ["유효 배관길이", `${fmt(effectiveLength)} m`],
+          ["유효 배관길이", `${fmt(operating.effectiveLength)} m`],
           ["온도", `${fmt(fluid.temperatureK)} K`],
           ["절대압", `${fmt(fluid.pressureKpa)} kPa(a)`],
           ["흐름 영역", regime],
@@ -2573,6 +2620,94 @@
       }
     }
 
+    function calculatePipePressureDrop() {
+      if (document.getElementById("pipeFlow").value.trim() === "") {
+        resetPipeResult();
+        return null;
+      }
+      try {
+        const fluid = derivePipeFluid();
+        const operating = pipeOperatingInputs();
+        const diameterValue = pipeNumericValue("pipeActualDiameter");
+        const diameterUnit = document.getElementById("pipeActualDiameterUnit").value;
+        if (!(diameterValue > 0)) throw new Error("실제 Pipe ID를 0보다 크게 입력하세요.");
+        const diameter = diameterUnit === "in" ? diameterValue * 0.0254 : diameterValue / 1000;
+        const hydraulics = pipeHydraulics(diameter, fluid, operating.effectiveLength, operating.roughnessM);
+        const regime = pipeFlowRegime(hydraulics.reynolds);
+        const outletPressure = fluid.pressureKpa - hydraulics.pressureDropKpa;
+        const pressureDropRatio = hydraulics.pressureDropKpa / fluid.pressureKpa;
+        const pressureDropPer100m = hydraulics.pressureDropKpa / operating.effectiveLength * 100;
+
+        document.getElementById("pipeDiameterMetric").textContent = `${fmt(diameter * 1000)} mm`;
+        document.getElementById("pipeVelocityMetric").textContent = `${fmt(hydraulics.velocity)} m/s`;
+        document.getElementById("pipePressureDropMetric").textContent = `${fmt(hydraulics.pressureDropKpa)} kPa`;
+        document.getElementById("pipeDensityMetric").textContent = `${fmt(fluid.density)} kg/m³`;
+        document.getElementById("pipeReynoldsMetric").textContent = formatConversionValue(hydraulics.reynolds);
+        document.getElementById("pipeFrictionMetric").textContent = formatConversionValue(hydraulics.friction);
+
+        const rows = [
+          ["계산 모드", "Pressure Drop"],
+          ["유체 모델", fluid.model],
+          ["입력 Pipe ID", `${fmt(diameter * 1000)} mm`],
+          ["배관 재질", pipeMaterials[pipeState.material].label],
+          ["절대 조도", `${fmt(operating.roughnessMm)} mm`],
+          ["실제 체적유량", `${fmt(fluid.q * 3600)} m³/hr`],
+          ["질량유량", `${fmt(fluid.massFlow * 3600)} kg/hr`],
+          ["유효 배관길이", `${fmt(operating.effectiveLength)} m`],
+          ["압력강하 / 100 m", `${fmt(pressureDropPer100m)} kPa/100 m`],
+          ["입구 절대압", `${fmt(fluid.pressureKpa)} kPa(a)`],
+          ["예상 출구 절대압", `${fmt(outletPressure)} kPa(a)`],
+          ["입구압 대비 압력강하", `${fmt(pressureDropRatio * 100)} %`],
+          ["온도", `${fmt(fluid.temperatureK)} K`],
+          ["흐름 영역", regime]
+        ];
+        document.getElementById("pipeResultBody").innerHTML = rows
+          .map(([key, value]) => `<tr><th>${escapeHtml(key)}</th><td>${escapeHtml(value)}</td></tr>`)
+          .join("");
+
+        let status = "입력한 Pipe ID의 압력강하를 계산했습니다.";
+        let statusType = "ok";
+        const warnings = [];
+        if (outletPressure <= 0) warnings.push("계산 압력강하가 입구 절대압 이상입니다. 입력조건과 배관 직경을 확인하세요.");
+        if (pipeState.phase === "twoPhase") warnings.push("균질 혼합모델 기반 예비 계산입니다. 상세 Two-phase 해석으로 검증하세요.");
+        if (pipeState.phase === "gas" && pressureDropRatio > 0.1) warnings.push("압력강하가 입구 절대압의 10%를 초과하므로 압축성 구간해석으로 검증하세요.");
+        if (hydraulics.velocity > pipePhaseDefaults[pipeState.phase].maxVelocity) warnings.push(`유속이 권장 기준값 ${pipePhaseDefaults[pipeState.phase].maxVelocity} m/s를 초과합니다.`);
+        if (regime === "Transitional") warnings.push("천이영역 Reynolds 수이므로 운전 변동을 고려해 검증하세요.");
+        if (warnings.length) {
+          status = warnings.join(" ");
+          statusType = "warn";
+        }
+        document.getElementById("pipeStatus").textContent = status;
+        document.getElementById("pipeStatus").className = statusType === "ok" ? "notice ok" : "notice";
+        return { diameter, fluid, hydraulics, regime, outletPressure };
+      } catch (error) {
+        resetPipeResult(error.message || "입력값을 확인하세요.", "warn");
+        return null;
+      }
+    }
+
+    function calculatePipe() {
+      return pipeState.mode === "pressureDrop" ? calculatePipePressureDrop() : calculatePipeDiameter();
+    }
+
+    function setPipeMode(mode) {
+      pipeState.mode = mode;
+      document.querySelectorAll("[data-pipe-mode]").forEach(button => {
+        const active = button.dataset.pipeMode === mode;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", String(active));
+      });
+      const isPressureDrop = mode === "pressureDrop";
+      document.getElementById("pipeSizingCriteria").classList.toggle("active", !isPressureDrop);
+      document.getElementById("pipePressureDropInputs").classList.toggle("active", isPressureDrop);
+      document.getElementById("pipeDiameterMetricLabel").textContent = isPressureDrop ? "입력 Pipe ID" : "필요 Pipe ID";
+      document.getElementById("pipeCriteriaTitle").textContent = isPressureDrop ? "유체 물성 및 배관 직경" : "유체 물성 및 설계 기준";
+      document.getElementById("pipeFormulaNote").textContent = isPressureDrop
+        ? "Darcy-Weisbach 식과 Colebrook 마찰계수로 입력 내경의 직관 및 피팅 상당길이 압력강하를 계산합니다. Gas에서 압력강하가 입구 절대압의 10%를 넘거나 Two-phase인 경우 상세 해석으로 검증하세요."
+        : "결과는 선택한 유속과 압력강하 한계를 만족하는 최소 내경입니다. Nm³ 기준은 0 °C, 1 atm, Z=1입니다. 실제 설계에서는 표준 배관경과 Schedule의 실제 ID, 부식여유, 침식, 소음, 진동 및 적용 코드를 별도로 검토하세요.";
+      calculatePipe();
+    }
+
     function setPipePhase(phase, applyDefaults = true) {
       pipeState.phase = phase;
       document.querySelectorAll("[data-pipe-phase]").forEach(button => {
@@ -2589,7 +2724,7 @@
         document.getElementById("pipeMaxPressureDrop").value = defaults.maxPressureDrop;
         document.getElementById("pipeFlowUnit").value = defaults.flowUnit;
       }
-      calculatePipeDiameter();
+      calculatePipe();
     }
 
     function setPipeMaterial(material) {
@@ -2600,12 +2735,13 @@
         button.setAttribute("aria-selected", String(active));
       });
       document.getElementById("pipeRoughness").value = pipeMaterials[material].roughnessMm;
-      calculatePipeDiameter();
+      calculatePipe();
     }
 
     function initPipeDiameter() {
       setPipeMaterial("carbonSteel");
       setPipePhase("liquid", true);
+      setPipeMode("diameter");
       renderIcons();
     }
 
@@ -2622,7 +2758,7 @@
         combustion: "Process Calculator - Combustion Air",
         neutralization: "Process Calculator - Neutralization",
         conversion: "Process Calculator - Unit Conversion",
-        pipe: "Process Calculator - Pipe Diameter"
+        pipe: "Process Calculator - Pipe Sizing"
       };
       document.getElementById("pageTitle").textContent = titles[tool] || titles.combustion;
       document.title = document.getElementById("pageTitle").textContent;
@@ -2631,7 +2767,7 @@
       });
       if (isNeutral) renderNeutralAll();
       if (isConversion) calculateUnitConversion();
-      if (isPipe) calculatePipeDiameter();
+      if (isPipe) calculatePipe();
     }
 
     document.getElementById("sampleBtn").addEventListener("click", loadSample);
@@ -2675,6 +2811,9 @@
     document.getElementById("conversionTo").addEventListener("change", calculateUnitConversion);
     document.getElementById("conversionSwapBtn").addEventListener("click", swapConversionUnits);
     document.getElementById("conversionCopyBtn").addEventListener("click", copyConversionResult);
+    document.querySelectorAll("[data-pipe-mode]").forEach(button => {
+      button.addEventListener("click", () => setPipeMode(button.dataset.pipeMode));
+    });
     document.querySelectorAll("[data-pipe-phase]").forEach(button => {
       button.addEventListener("click", () => setPipePhase(button.dataset.pipePhase, true));
     });
@@ -2682,10 +2821,10 @@
       button.addEventListener("click", () => setPipeMaterial(button.dataset.pipeMaterial));
     });
     document.querySelectorAll("#pipePage input, #pipePage select").forEach(control => {
-      control.addEventListener("input", calculatePipeDiameter);
-      control.addEventListener("change", calculatePipeDiameter);
+      control.addEventListener("input", calculatePipe);
+      control.addEventListener("change", calculatePipe);
     });
-    document.getElementById("pipeCalcBtn").addEventListener("click", calculatePipeDiameter);
+    document.getElementById("pipeCalcBtn").addEventListener("click", calculatePipe);
     document.getElementById("neutralAddRowBtn").addEventListener("click", () => {
       neutralState.rows.push(makeNeutralRow());
       renderNeutralAll();
