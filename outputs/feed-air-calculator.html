@@ -476,6 +476,7 @@
       .summary { grid-template-columns: 1fr; }
       .tool-menu { grid-template-columns: 1fr; }
       .converter-categories { display: grid; grid-template-columns: 1fr 1fr; }
+      .converter-categories button:last-child:nth-child(odd) { grid-column: 1 / -1; }
       button, .file-label, .button-link { width: 100%; justify-content: center; }
       .topbar { display: grid; grid-template-columns: 1fr 1fr; }
       h1 { font-size: 21px; }
@@ -671,8 +672,11 @@
                 <button role="tab" type="button" data-conversion-category="pressure">압력</button>
                 <button role="tab" type="button" data-conversion-category="massFlow">질량유량</button>
                 <button role="tab" type="button" data-conversion-category="volumeFlow">부피유량</button>
+                <button role="tab" type="button" data-conversion-category="velocity">유속</button>
                 <button role="tab" type="button" data-conversion-category="mass">질량</button>
                 <button role="tab" type="button" data-conversion-category="volume">부피</button>
+                <button role="tab" type="button" data-conversion-category="energy">에너지</button>
+                <button role="tab" type="button" data-conversion-category="heat">열량</button>
               </div>
             </div>
           </section>
@@ -768,6 +772,56 @@
       { id: "bbl_us", label: "US oil bbl", factor: 0.158987294928 },
       { id: "acre_ft", label: "acre-ft", factor: 1233.48183754752 }
     ];
+    const velocityConversionUnits = [
+      { id: "m_s", label: "m/s", factor: 1 },
+      { id: "m_min", label: "m/min", factor: 1 / 60 },
+      { id: "m_h", label: "m/h", factor: 1 / 3600 },
+      { id: "km_s", label: "km/s", factor: 1000 },
+      { id: "km_min", label: "km/min", factor: 1000 / 60 },
+      { id: "km_h", label: "km/h", factor: 1000 / 3600 },
+      { id: "cm_s", label: "cm/s", factor: 0.01 },
+      { id: "mm_s", label: "mm/s", factor: 0.001 },
+      { id: "ft_s", label: "ft/s", factor: 0.3048 },
+      { id: "ft_min", label: "ft/min (fpm)", factor: 0.3048 / 60 },
+      { id: "ft_h", label: "ft/h", factor: 0.3048 / 3600 },
+      { id: "in_s", label: "in/s", factor: 0.0254 },
+      { id: "mph", label: "mile/h (mph)", factor: 1609.344 / 3600 },
+      { id: "knot", label: "knot", factor: 1852 / 3600 }
+    ];
+    const energyConversionUnits = [
+      { id: "J", label: "J", factor: 1 },
+      { id: "kJ", label: "kJ", factor: 1e3 },
+      { id: "MJ", label: "MJ", factor: 1e6 },
+      { id: "GJ", label: "GJ", factor: 1e9 },
+      { id: "TJ", label: "TJ", factor: 1e12 },
+      { id: "Wh", label: "Wh", factor: 3600 },
+      { id: "kWh", label: "kWh", factor: 3.6e6 },
+      { id: "MWh", label: "MWh", factor: 3.6e9 },
+      { id: "GWh", label: "GWh", factor: 3.6e12 },
+      { id: "erg", label: "erg", factor: 1e-7 },
+      { id: "eV", label: "eV", factor: 1.602176634e-19 },
+      { id: "kgf_m", label: "kgf·m", factor: 9.80665 },
+      { id: "ft_lbf", label: "ft·lbf", factor: 1.3558179483314 },
+      { id: "hp_h", label: "hp·h", factor: 2684519.537696 },
+      { id: "PS_h", label: "PS·h", factor: 2647795.5 }
+    ];
+    const heatConversionUnits = [
+      { id: "heat_J", label: "J", factor: 1 },
+      { id: "heat_kJ", label: "kJ", factor: 1e3 },
+      { id: "heat_MJ", label: "MJ", factor: 1e6 },
+      { id: "heat_GJ", label: "GJ", factor: 1e9 },
+      { id: "cal_th", label: "cal (thermochemical)", factor: 4.184 },
+      { id: "kcal_th", label: "kcal (thermochemical)", factor: 4184 },
+      { id: "Mcal_th", label: "Mcal", factor: 4.184e6 },
+      { id: "cal_IT", label: "cal (IT)", factor: 4.1868 },
+      { id: "kcal_IT", label: "kcal (IT)", factor: 4186.8 },
+      { id: "Btu_IT", label: "BTU (IT)", factor: 1055.05585262 },
+      { id: "kBtu_IT", label: "kBTU (IT)", factor: 1055055.85262 },
+      { id: "MMBtu_IT", label: "MMBtu (IT)", factor: 1055055852.62 },
+      { id: "therm_us", label: "therm (US)", factor: 105480400 },
+      { id: "toe", label: "toe", factor: 41.868e9 },
+      { id: "ton_refrigeration_h", label: "ton refrigeration·h", factor: 12660670.23144 }
+    ];
 
     function makeFlowConversionUnits(units) {
       return units.flatMap(unit => timeConversionUnits.map(time => ({
@@ -837,6 +891,13 @@
         defaults: ["m3_h", "L_min"],
         note: "실제 부피유량의 단위 환산입니다. Nm³, Sm³, scf처럼 기준 온도와 압력이 지정된 가스 부피는 동일 기준끼리만 비교해야 합니다."
       },
+      velocity: {
+        title: "유속 환산",
+        kind: "factor",
+        units: velocityConversionUnits,
+        defaults: ["m_s", "km_h"],
+        note: "길이와 시간 단위를 함께 반영한 선형 유속 환산입니다. Mach는 온도와 매질에 따른 음속 정보가 필요하므로 제외했습니다."
+      },
       mass: {
         title: "질량 환산",
         kind: "factor",
@@ -850,6 +911,20 @@
         units: volumeConversionUnits,
         defaults: ["m3", "L"],
         note: "실제 부피 단위를 환산합니다. US gallon과 Imperial gallon은 서로 다른 크기입니다."
+      },
+      energy: {
+        title: "에너지 환산",
+        kind: "factor",
+        units: energyConversionUnits,
+        defaults: ["kWh", "MJ"],
+        note: "줄(J)을 기준으로 전기, 기계 및 일반 에너지 단위를 환산합니다."
+      },
+      heat: {
+        title: "열량 환산",
+        kind: "factor",
+        units: heatConversionUnits,
+        defaults: ["kcal_th", "Btu_IT"],
+        note: "누적 열에너지량을 환산합니다. kcal/h, BTU/h, kW와 같은 시간당 열부하 단위와는 구분됩니다."
       }
     };
 
